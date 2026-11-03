@@ -11,7 +11,7 @@
 
   python tools/hud_pack_2p.py               -> src/game/ga_hud_top.h + build/gga_hud_2p.rtz (bar only)
   python tools/hud_pack_2p.py <dump folder> -> the same, with the J3 / J4 halves found in the dump
-  (copy the .rtz to %LOCALAPPDATA%\\Goemon64Recompiled\\mods)
+  (copy the .rtz to %LOCALAPPDATA%\\GGARecompiled\\mods)
 """
 import colorsys, json, os, sys, zipfile
 
