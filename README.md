@@ -25,7 +25,24 @@ Only the **US release** is supported:
 | Header code | `NGME` |
 | SHA-1 | `9f9e860816f9e2a68bb5f4f56086e0c7450c64d7` |
 
-The Japanese and European releases are not supported.
+The Japanese and European releases cannot be played on their own, but the European one can add its languages (below).
+
+### French and German (optional, European ROM)
+
+If you also own the **European release** (*Mystical Ninja 2 Starring Goemon*), the game can use its French and German
+texts:
+
+| | |
+|---|---|
+| Header code | `NGMP` |
+| SHA-1 | `aadd1d7e943cbfa5496a370158b5f8fe17b06415` |
+
+1. Copy it, in `.z64` format, to `%LOCALAPPDATA%\GGARecompiled\` and name it `goemon2.eu.z64` (next to your saves).
+2. Start the game: the title screen now shows **Option**, then **Language**, with **English / Français / Deutsch**,
+   like the European release.
+
+The dialogues, the font with accented letters, the title menu, the world map, the journal, the world title cards and
+"Stage Clear" are translated. Without that file, nothing changes.
 
 ## System requirements
 
@@ -70,6 +87,8 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
 
 - Only Worlds 1 to 3 have been fully tested.
 - Night-time enemies (levels played at night) have not been checked in widescreen yet.
+- French and German: tested mostly in World 1, German less than French. Some screens with drawn text, and texts outside
+  the dialogues, may stay in English.
 
 ## Reporting a bug
 
