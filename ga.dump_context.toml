@@ -1,0 +1,17 @@
+# Config file for Goemon's Great Adventure (USA) Recompilation.
+# For use with the --dump-context flag of the N64Recomp tool.
+
+[input]
+entrypoint = 0x80000400
+output_func_path = "RecompiledFuncs"
+elf_path = "build/ga.elf"
+relocatable_sections_path = "ga.overlays.txt"
+bss_section_suffix = "_bss"
+
+[patches]
+stubs = [
+
+]
+
+ignored = [
+]

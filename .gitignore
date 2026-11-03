@@ -1,0 +1,19 @@
+*.z64
+*.elf
+build*/
+RecompiledFuncs/
+RecompiledPatches/
+__pycache__/
+.venv/
+# reference ROMs and their by-products (Goemon 1 dump, manifest)
+ref/
+# junction to ../Goemon64Recomp/lib (see notes/APPLICATION.md): replace by real submodules, never commit it
+lib
+compile_commands.json
+# data extracted from the ROM (Konami): HUD segment dump, original textures, RSPRecomp output of the game's audio microcode
+hud_seg3.bin
+assets/hud/original/
+rsp/
+# third-party tools (download them: N64Recomp releases), local Claude settings
+*.exe
+.claude/settings.local.json

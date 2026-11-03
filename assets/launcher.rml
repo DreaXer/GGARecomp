@@ -1,0 +1,90 @@
+<rml>
+	<head>
+		<title>Launcher</title>
+		<link type="text/rcss" href="rml.rcss"/>
+		<link type="text/rcss" href="recomp.rcss"/>
+		<style>
+			body
+			{
+				width: 100%;
+				height: 100%;
+			}
+			/* GGA: the background art overflows under the menu and titles: let clicks through */
+			.launcher__background-wrapper
+			{
+				pointer-events: none;
+			}
+			/* GGA: left-half art, mirror of the right one (anchored left, slides to the right while fading in) */
+			@keyframes slide-gga-bg-over
+			{
+				0% { transform: translateX(-100dp); }
+				100% { transform: translateX(0dp); }
+			}
+			.launcher__background-wrapper--left
+			{
+				right: -100%;
+				left: -10vw;
+				top: 0;
+				bottom: 0;
+				animation: 25s cubic-out 1 slide-gga-bg-over;
+			}
+			.launcher__background-gga
+			{
+				height: 126%;
+				width: auto;
+				animation: 2.5s cubic-in-out 1 fade-mm-in;
+				opacity: 0.1;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="window" data-model="launcher_model">
+			<div class="launcher">
+				<div class="launcher__vertical-split">
+					<div class="launcher__background-wrapper launcher__background-wrapper--left">
+						<img src="?/gga/launcher_bg" class="launcher__background-gga" />
+					</div>
+					<div class="launcher__title-quadrant">
+						<button class="subtitle-title" selected>
+							<div><h3>Goemon 64: Recompiled</h3></div>
+							<div><h1>Goemon's Great Adventure</h1></div>
+						</button>
+					</div>
+					<div class="launcher__content-quadrant">
+						<button data-if="!mm_rom_valid" onclick="select_rom" class="menu-list-item" autofocus>
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Select ROM</div>
+						</button>
+						<button data-if="mm_rom_valid" onclick="start_game" class="menu-list-item" autofocus>
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Start Game</div>
+						</button>
+						<button onclick="open_controls" class="menu-list-item">
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Controls</div>
+						</button>
+						<button onclick="open_settings" class="menu-list-item">
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Settings</div>
+						</button>
+						<button onclick="open_mods" class="menu-list-item">
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Mods</div>
+						</button>
+						<button onclick="exit_game" class="menu-list-item">
+							<div class="menu-list-item__bullet"></div>
+							<div class="menu-list-item__label">Exit</div>
+						</button>
+					</div>
+				</div>
+				<div class="launcher__vertical-split launcher__vertical-split--right">
+					<div class="launcher__title-quadrant launcher__title-quadrant--right"></div>
+					<div class="launcher__content-quadrant"></div>
+				</div>
+				<div class="bottom-left">
+					<label>v{{version_number}}</label>
+				</div>
+			</div>
+		</div>
+	</body>
+</rml>
