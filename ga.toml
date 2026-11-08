@@ -533,6 +533,18 @@ func = "func_800EE568_5A9788"
 text = "{ void ga_pano_end(uint8_t*, recomp_context*); ga_pano_end(rdram, ctx); }"
 before_vram = 0x800EF75C
 
+# Logos du demarrage (overlay 8, func_80173D68) : encadres de gEXSetRectAlign origines CENTER comme le panorama (ga_logo_*),
+# sinon les rangees de tuiles qui couvrent 320 px sont etirees et les autres restent en 4:3 (bandes decalees en 16:9).
+[[patches.hook]]
+func = "func_80173D68_5CB3A8"
+text = "{ void ga_logo_begin(uint8_t*); ga_logo_begin(rdram); }"
+before_vram = 0x80173D78
+
+[[patches.hook]]
+func = "func_80173D68_5CB3A8"
+text = "{ void ga_logo_end(uint8_t*); ga_logo_end(rdram); }"
+before_vram = 0x80173E14
+
 # Limites de colonnes ($v0 = min(largeur, 18), $a0 = min(largeur + 1, 19), $t0 = largeur) : elargies seulement pendant un
 # panorama elargi (tuiles ecrites dans le tas de listes, sinon la liste de la scene deborde et la 3D disparait).
 [[patches.hook]]

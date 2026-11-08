@@ -417,6 +417,38 @@ extern "C" void ga_pano_end(uint8_t* rdram, recomp_context* ctx) {
     ctx->r16 = (gpr)(int32_t)pano_stream_next;     // the function ends the scene list here and returns it
 }
 
+// Boot logos (overlay 8): func_80173D68(gfx) keeps gfx in D_8017ECC0, its 3 calls to func_80173E24 append a mosaic of tile
+// rects (build\dl_logo.txt, 2026-11-08). Rows covering the 320 px width were stretched to the window, the others kept 4:3 at
+// the center: shifted bands in widescreen / windowed. Same fix as the panorama: CENTER origins, x relative to the center.
+#define GA_LOGO_GFX 0x8017ECC0u
+
+// Hook at 0x80173D78 (gfx just stored).
+// The sides (outside 4:3) were the game's black clear. Filled first with the logos' white background: a full-width fill
+// rect, no origin, so RT64 stretches it to the window like the clear. Always white: the logos' background is already white
+// during their fade in (user's test, 2026-11-08; a fill faded with the logo alpha was darker than it).
+extern "C" void ga_logo_begin(uint8_t* rdram) {
+    uint32_t gfx = (uint32_t)MEM_W(0, (int32_t)GA_LOGO_GFX);
+    put(rdram, gfx, 0xE7000000u, 0u);              // pipesync
+    put(rdram, gfx + 8, 0xE3000A01u, 0x00300000u); // cycle type FILL (each logo sets 1-cycle again, 0x8017E7D8)
+    put(rdram, gfx + 16, 0xF7000000u, 0xFFFFFFFFu); // white (RGBA5551 0xFFFF twice)
+    put(rdram, gfx + 24, 0xF64FC3BCu, 0u);         // fill rect 0, 0 .. 319, 239
+    gfx += 32;
+    const uint32_t dx = (uint32_t)(-640) & 0xFFFFu; // -160 px in 1/4 px
+    put(rdram, gfx, 0xE0525464u, 0x10000064u);     // gEXEnable
+    put(rdram, gfx + 8, 0x64000006u, 0x00200200u); // gEXSetRectAlign, origins CENTER / CENTER
+    put(rdram, gfx + 16, dx << 16, dx << 16);
+    MEM_W(0, (int32_t)GA_LOGO_GFX) = (int32_t)(gfx + 24);
+}
+
+// Hook at 0x80173E14 (after the last logo, before gfx is returned): alignment back to normal.
+extern "C" void ga_logo_end(uint8_t* rdram) {
+    const uint32_t gfx = (uint32_t)MEM_W(0, (int32_t)GA_LOGO_GFX);
+    put(rdram, gfx, 0xE0525464u, 0x10000064u);     // gEXEnable
+    put(rdram, gfx + 8, 0x64000006u, 0x00800800u); // gEXSetRectAlign, origins NONE
+    put(rdram, gfx + 16, 0u, 0u);
+    MEM_W(0, (int32_t)GA_LOGO_GFX) = (int32_t)(gfx + 24);
+}
+
 // func_80004880, scene setup (hook at 0x80004A4C): the scene scissor ED (just written, at $s0 - 8; region D_800881C0 + 0x14,
 // x 16..304 / y 8..198 or 232) and the fill region ($a3, $a1, $t4, $a2 = x0, y0, x1, y1, used for the clears that follow)
 // become the full screen, as the game's own "no region" case (0, 0, 319, 239). RT64 in Expand mode widens a scene whose
