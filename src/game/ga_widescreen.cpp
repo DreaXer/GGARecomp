@@ -119,8 +119,24 @@ static float view_scale() {
 // counted x * y * z). The far plane is NOT changed (user's choice, 2026-10-24): a far x 2 (here and in guPerspective) with the
 // fog kept at its original distance (gSPFogPosition rewritten) showed the added scenery all white; without that fix the fog
 // moved away. So x 2 only widens the sides, and the fog stays the game's.
+// The box's cells are allocated each pass (func_80005604, 0x800E1270: x * y * z bytes) and on failure the pass is skipped:
+// with x and z both scaled the size grows as the square of the factor, so in a wide window (sooner with x2) the scenery at
+// the sides vanished (2026-11-08). The factor is capped: lowered by 15 % after a failed allocation (ga_cull_alloc).
+// shortcut: the cap never goes back up in a session (a lighter level keeps it); add a slow recovery if that shows.
+static float cull_cap = 1000.0f;
+static float cull_factor = 1.0f; // factor used by the current pass
 extern "C" int32_t ga_cull_box(int32_t size) {
-    return (int32_t)(size * ga_spawn_scale() * view_scale());
+    cull_factor = std::min(ga_spawn_scale() * view_scale(), cull_cap);
+    return (int32_t)(size * cull_factor);
+}
+
+// func_800E0C44 right after the cells allocation (hook at 0x800E1278: $v0 = block or 0, $s0 = size).
+extern "C" void ga_cull_alloc(uint32_t block, uint32_t size) {
+    if (block == 0 && cull_factor > 1.0f) {
+        cull_cap = std::max(1.0f, cull_factor * 0.85f);
+        fprintf(stderr, "[GGA CULL] cells allocation of %u bytes failed: box factor %.2f -> cap %.2f\n", size, cull_factor,
+            cull_cap);
+    }
 }
 
 // Thin lines on the ground along the terrain pieces' joins (all resolutions, also 4:3 / native; not on the N64). Measured
@@ -275,6 +291,8 @@ extern "C" void ga_hud_begin(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t gfx = (uint32_t)MEM_W(0, (int32_t)ptr);
     const uint32_t down = hud_down_px * 4;
     put(rdram, gfx, 0xE0525464u, 0x10000064u);                         // gEXEnable again (see ga_frame_start)
+    // Origins NONE: the HUD keeps the game's proportions (height-based 4:3). Tried 2026-11-08: origins CENTER (edges snapped
+    // to the native grid against doubled lines in the digit boxes): the HUD got narrower as the window widened, reverted.
     put(rdram, gfx + 8, 0x64000006u, 0x00800800u);                     // gEXSetRectAlign, origins NONE
     put(rdram, gfx + 16, down, down);                                  // ulx 0 / uly +10 px, lrx 0 / lry +10 px
     MEM_W(0, (int32_t)ptr) = (int32_t)(gfx + 24);
@@ -293,16 +311,26 @@ extern "C" void ga_hud_bubble(uint8_t* rdram, recomp_context* ctx) {
 // x = 16 - (scroll mod 16), at most 18 / 19 columns, starting at map column $t3 = scroll / 16; layer + 0x3A = wraps
 // horizontally, + 0x20 = map width, + 0x14 = fixed x origin (0 = scrolling). Measured with a display list trace
 // (2026-10-20): the panorama is a grid of 16 x 16 rectangles, x 16..304, y 56..136.
-// In widescreen a wrapping layer starts 5 columns earlier in the map and draws 28 / 29 columns (x 16..464 as drawn, i.e.
-// -64..384 once moved by -80). Tried and dropped: RT64 extended commands (gEXSetRectAlign + gEXSetScissor): the wide scissor
-// is merged into RT64's frame scissor, then nothing "covers the whole width" any more and the 3D scene is broken (tested).
-// Used instead: RT64 stretches to the whole window a row of rectangles covering the frame width 0..320 (as the sky lines).
-// So each tile is placed COMPRESSED into 0..320 (x' = 160 + (x - 80 - 160) * k, k = (4/3) / aspect, texture step / k) and
-// cut to 0..320; RT64's stretch (1 / k) puts it back at its real size and place across the window.
-static constexpr int pano_extra_columns = 5;
+// A wrapping layer starts pano_extra_columns (e) earlier in the map and draws 18 + 2e (+1) columns, the whole list moved by
+// -16e px with gEXSetRectAlign (origins CENTER): RT64 then keeps each tile at its real size (no stretch, rects with an
+// origin are not "covering the width") around the window center and snaps it to the native pixel grid, so every tile is
+// exactly 16 native px and all the columns move together (2026-11-08).
+// History: the tiles were first COMPRESSED into 0..320 for RT64 to stretch them back (a row covering the frame width is
+// stretched to the window, coversScissorWidthMerged): fine in 16:9 full screen only. Each tile edge was rounded twice (1/4
+// native px in the rect, then to the output pixel by RT64), so with a non integer scale (window) some columns moved and
+// others not, overlapping (user's report); it also needed gEXForceUpscale2D + point filtering against the 1.33 texel / px
+// sampling (dots / green outlines, 2026-10-24), now useless. Tried and dropped earlier: gEXSetRectAlign + gEXSetScissor
+// (the wide scissor broke the 3D scene's "covers the whole width").
+// e = ceil((160 / k - 144) / 16), k = (4/3) / window aspect: the row reaches x 160 -/+ 160 / k whatever the scroll. In 4:3
+// e = 1: the 16 px side bands left since the black bands were removed are filled too.
+static constexpr int pano_max_extra = 20; // x stays < 1024 (12-bit rect coordinates): 16 + 59 * 16 = 960
+static int pano_extra_columns = 5;
 static bool pano_active = false;
 static uint32_t pano_stream_next; // scene list position after our G_DL to the tiles
-static uint32_t pano_heap_start;  // first command of the tiles list in the heap
+// Bottom of the scene scissor (ga_scene_scissor: 208 with the HUD, 240 without): the panorama's own scissor stops there
+// too. With 240 its lower rows (whitish fog, the layer is 15 rows = 240 px) were drawn behind the HUD bar (white band,
+// every aspect, 2026-11-08).
+static uint32_t scene_scissor_lry = 240;
 
 // The layer callback writes into the scene display list (func_800D48F4: gfx = callback(gfx, node), 64 KB buffers): with
 // 28 columns instead of 18 that list overflowed and the 3D after it was not drawn (tested). So the tiles go to the game's
@@ -310,19 +338,24 @@ static uint32_t pano_heap_start;  // first command of the tiles list in the heap
 #define GA_DL_HEAP      0x8010FCE0u /* current pointer */
 #define GA_DL_HEAP_BASE 0x8010FCE8u /* buffer n = base + n * 0x20000, n = byte D_800881DE (func_800D05FC: room left) */
 #define GA_DL_FRAME     0x800881DEu
-static constexpr uint32_t pano_heap_needed = 0x6000; // 29 columns x 15 rows x 0x28 bytes, and margin
+
+// Columns drawn (18 of the game + both sides) and the heap they take: (columns + 1) x 15 rows x 0x28 bytes, and margin.
+static int pano_columns() { return 18 + 2 * pano_extra_columns; }
 
 // Hook at 0x800EE840 (start column $t3 and start x $f0 computed, $a2 = layer, $s0 = gfx).
 extern "C" void ga_pano_begin(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t layer = (uint32_t)ctx->r6;
     pano_active = false;
-    if (!widescreen() || MEM_BU(0x3A, (int32_t)layer) == 0 || MEM_HU(0x14, (int32_t)layer) != 0) {
+    if (MEM_BU(0x3A, (int32_t)layer) == 0 || MEM_HU(0x14, (int32_t)layer) != 0) {
         return;
     }
+    const float k = original_aspect / target_aspect();
+    pano_extra_columns = std::clamp((int)std::ceil((160.0f / k - 144.0f) / 16.0f), 1, pano_max_extra);
+    const uint32_t heap_needed = (uint32_t)(pano_columns() + 1) * 15u * 0x28u + 0x400u;
     const uint32_t heap = (uint32_t)MEM_W(0, (int32_t)GA_DL_HEAP);
     const uint32_t heap_end = GA_DL_HEAP_BASE + ((uint32_t)MEM_BU(0, (int32_t)GA_DL_FRAME) << 17) + 0x1FFF8u;
-    if (heap >= heap_end || heap_end - heap < pano_heap_needed) {
-        return; // not enough room: the layer stays 4:3
+    if (heap >= heap_end || heap_end - heap < heap_needed) {
+        return; // not enough room: the layer stays as the game draws it
     }
     const int width = MEM_HU(0x20, (int32_t)layer);
     int column = (int16_t)ctx->r11 - pano_extra_columns;
@@ -333,107 +366,55 @@ extern "C" void ga_pano_begin(uint8_t* rdram, recomp_context* ctx) {
     const uint32_t stream = (uint32_t)ctx->r16;
     put(rdram, stream, 0xDE000000u, heap); // G_DL to the tiles
     pano_stream_next = stream + 8;
-    // The compressed tiles step 1.33 texels per pixel: drawn at the native 320 x 240 (upscale2D = Original) a texel in three
-    // was dropped or mixed with the transparent texels at the edges (dark dots on the mountains, green on the roofs, none in
-    // 4:3; 2026-10-24). RT64 draws them at the output resolution instead (gEXForceUpscale2D, its own gEXEnable first).
-    put(rdram, heap, 0xE0525464u, 0x10000064u); // gEXEnable
-    put(rdram, heap + 8, 0x6400000Eu, 1u);      // gEXForceUpscale2D(1)
-    // Drawn at full resolution, the game's bilinear filter really blends at each tile's edges: the next tile of the stacked
-    // texture (lines every 16 px) and the transparent texels (dark / green outlines). Point sampling, as the native 1:1 look.
-    put(rdram, heap + 16, 0xE3001201u, 0u);     // G_SETOTHERMODE_H text filter: point
-    pano_heap_start = heap + 24;
-    ctx->r16 = (gpr)(int32_t)(heap + 24);
+    // -16e px, and -160 px: with a CENTER origin RT64 reads x relative to the center (movedFromOrigin adds half the width;
+    // without it the tiles were 160 px to the right, left half empty, tested 2026-11-08). In 1/4 px.
+    const uint32_t dx = (uint32_t)(-64 * pano_extra_columns - 640) & 0xFFFFu;
+    put(rdram, heap, 0xE0525464u, 0x10000064u);     // gEXEnable (see ga_frame_start)
+    put(rdram, heap + 8, 0x64000006u, 0x00200200u); // gEXSetRectAlign, origins CENTER / CENTER
+    put(rdram, heap + 16, dx << 16, dx << 16);      // ulx / lrx offsets, no y offset
+    // The scissor of a rect is scaled like the rect (rt64_framebuffer_renderer.cpp, triangles.scissor): for these unstretched
+    // tiles the game's 0..320 scissor became the 4:3 center (tested 2026-11-08). gEXSetScissor with origins LEFT / RIGHT and
+    // 0 / 0 from the edges = the whole window, but still 0..320 internally, so the frame's merged scissor is not widened (a
+    // wider one breaks the 3D scene's "covers the whole width", tried before). Pushed / popped around the tiles.
+    // LEFT / RIGHT origins follow RT64's extended aspect setting: forced to Full (rt64_render_context.cpp) for ultrawide.
+    put(rdram, heap + 24, 0x64000017u, 0u);          // gEXPushScissor
+    put(rdram, heap + 32, 0x64000005u, 0x01000000u); // gEXSetScissor, mode 0, origins LEFT / RIGHT
+    put(rdram, heap + 40, 0u, scene_scissor_lry * 4u); // ulx 0 / uly 0, lrx 0 / lry = the scene's
+    ctx->r16 = (gpr)(int32_t)(heap + 48);
     pano_active = true;
 }
 
 // Column limits of the tile loop (hooks at 0x800EF600: $v0 = min(width, 18); 0x800EF634: $a0 = min(width + 1, 19); $t0 =
-// map width): 28 / 29 while a widened layer is drawn to the heap, the game's values otherwise.
+// map width): 18 + 2e / + 1 while a widened layer is drawn to the heap, the game's values otherwise.
 extern "C" void ga_pano_limit(recomp_context* ctx, int partial) {
     if (!pano_active) {
         return;
     }
-    const int width = (int)(int32_t)ctx->r8;
+    // Not capped by the map width ($t0): the layer wraps (0x800EF660: column - width), so a map narrower than the window
+    // (32 columns? right side empty beyond ~2.1:1, 2026-11-08) just repeats, as it does on the sides.
+    const int columns = pano_columns();
     if (partial) {
-        ctx->r4 = (gpr)(int32_t)(width < 28 ? width + 1 : 29);
+        ctx->r4 = (gpr)(int32_t)(columns + 1);
     } else {
-        ctx->r2 = (gpr)(int32_t)(width < 28 ? width : 28);
+        ctx->r2 = (gpr)(int32_t)columns;
     }
 }
 
-// Copy of the sub-list at dl (KSEG0, up to its G_ENDDL, 32 commands at most) to dst with any text filter setting made point,
-// and the G_DL at call redirected to it. Returns the end of the copy. Other G_DL targets are left as they are.
-static uint32_t pano_dl_copy(uint8_t* rdram, uint32_t dl, uint32_t dst, uint32_t call) {
-    if (dl < 0x80000000u || dl >= 0x80800000u) {
-        return dst;
-    }
-    uint32_t out = dst;
-    for (int i = 0; i < 32; i++, dl += 8, out += 8) {
-        const uint32_t w0 = (uint32_t)MEM_W(0, (int32_t)dl);
-        put(rdram, out, w0, w0 == 0xE3001201u ? 0u : (uint32_t)MEM_W(4, (int32_t)dl));
-        if ((w0 >> 24) == 0xDF) {
-            MEM_W(4, (int32_t)call) = (int32_t)dst;
-            return out + 8;
-        }
-    }
-    return dst; // no G_ENDDL found: the call keeps the game's list
-}
-
-// Hook at 0x800EF75C (before the final G_ENDDL, $s0 = gfx in the heap): every tile rectangle of the list is compressed into
-// 0..320 (see above), the list is ended and the scene list continues after our G_DL.
+// Hook at 0x800EF75C (before the final G_ENDDL, $s0 = gfx in the heap): alignment back to normal, the tiles list is ended
+// and the scene list continues after our G_DL.
 extern "C" void ga_pano_end(uint8_t* rdram, recomp_context* ctx) {
     if (!pano_active) {
         return;
     }
     pano_active = false;
     const uint32_t gfx = (uint32_t)ctx->r16;
-    const float k = original_aspect / target_aspect();
-    uint32_t tail = gfx + 32; // after our end commands: copies of the sub-lists called (pano_dl_copy)
-    for (uint32_t a = pano_heap_start; a + 24 <= gfx; a += 8) {
-        const uint32_t w0 = (uint32_t)MEM_W(0, (int32_t)a), op = w0 >> 24;
-        if (w0 == 0xE3001201u) { // the game's own text filter setting: point too (see ga_pano_begin)
-            MEM_W(4, (int32_t)a) = 0;
-            continue;
-        }
-        if (w0 == 0xDE000000u) { // G_DL to the game's tile setup (D_8010C160: sets the filter back to bilinear): to a copy
-            tail = pano_dl_copy(rdram, (uint32_t)MEM_W(4, (int32_t)a), tail, a);
-            continue;
-        }
-        if (op != 0xE4 && op != 0xE5) {
-            continue;
-        }
-        const uint32_t w1 = (uint32_t)MEM_W(4, (int32_t)a);
-        const uint32_t e1 = (uint32_t)MEM_W(12, (int32_t)a), f1 = (uint32_t)MEM_W(20, (int32_t)a);
-        const float ulx = ((w1 >> 12) & 0xFFF) / 4.0f - 80.0f, lrx = ((w0 >> 12) & 0xFFF) / 4.0f - 80.0f;
-        const float dsdx = (int16_t)(f1 >> 16) / 1024.0f;
-        float nulx = 160.0f + (ulx - 160.0f) * k, nlrx = 160.0f + (lrx - 160.0f) * k;
-        float s = (int16_t)(e1 >> 16) / 32.0f;
-        if (nlrx <= 0.0f || nulx >= 320.0f) { // fully outside the window: no-op (pipe syncs)
-            put(rdram, a, 0xE7000000u, 0);
-            put(rdram, a + 8, 0xE7000000u, 0);
-            put(rdram, a + 16, 0xE7000000u, 0);
-            a += 16;
-            continue;
-        }
-        if (nulx < 0.0f) {
-            s += -nulx * dsdx / k;
-            nulx = 0.0f;
-        }
-        if (nlrx > 320.0f) {
-            nlrx = 320.0f;
-        }
-        const uint32_t iulx = (uint32_t)(nulx * 4.0f + 0.5f), ilrx = (uint32_t)(nlrx * 4.0f + 0.5f);
-        MEM_W(0, (int32_t)a) = (int32_t)((w0 & 0xFF000FFFu) | ((ilrx & 0xFFF) << 12));
-        MEM_W(4, (int32_t)a) = (int32_t)((w1 & 0xFF000FFFu) | ((iulx & 0xFFF) << 12));
-        MEM_W(12, (int32_t)a) = (int32_t)((e1 & 0xFFFFu) | ((uint32_t)((int)(s * 32.0f) & 0xFFFF) << 16));
-        MEM_W(20, (int32_t)a) = (int32_t)((f1 & 0xFFFFu) | ((uint32_t)((int)(dsdx / k * 1024.0f) & 0xFFFF) << 16));
-        a += 16;
-    }
-    put(rdram, gfx, 0xE0525464u, 0x10000064u);         // gEXEnable
-    put(rdram, gfx + 8, 0x6400000Eu, 0u);              // gEXForceUpscale2D(0)
-    put(rdram, gfx + 16, 0xE3001201u, 0x00002000u);    // text filter back to bilinear (G_TF_BILERP) for what follows
-    put(rdram, gfx + 24, 0xDF000000u, 0u);             // end of the tiles list
-    MEM_W(0, (int32_t)GA_DL_HEAP) = (int32_t)tail;
-    ctx->r16 = (gpr)(int32_t)pano_stream_next;         // the function ends the scene list here and returns it
+    put(rdram, gfx, 0xE0525464u, 0x10000064u);     // gEXEnable
+    put(rdram, gfx + 8, 0x64000018u, 0u);          // gEXPopScissor (the game's scissor back)
+    put(rdram, gfx + 16, 0x64000006u, 0x00800800u); // gEXSetRectAlign, origins NONE
+    put(rdram, gfx + 24, 0u, 0u);                  // no offsets
+    put(rdram, gfx + 32, 0xDF000000u, 0u);         // end of the tiles list
+    MEM_W(0, (int32_t)GA_DL_HEAP) = (int32_t)(gfx + 40);
+    ctx->r16 = (gpr)(int32_t)pano_stream_next;     // the function ends the scene list here and returns it
 }
 
 // func_80004880, scene setup (hook at 0x80004A4C): the scene scissor ED (just written, at $s0 - 8; region D_800881C0 + 0x14,
@@ -450,6 +431,7 @@ extern "C" void ga_scene_scissor(uint8_t* rdram, recomp_context* ctx) {
     const bool hud = is_ed && ((uint32_t)MEM_W(4, (int32_t)cmd) & 0xFFFu) < 208u * 4u; // its lry: 198 with the HUD
     if (is_ed) {
         put(rdram, cmd, 0xED000000u, hud ? 0x00500340u : 0x005003C0u);
+        scene_scissor_lry = hud ? 208u : 240u;
     }
     ctx->r7 = 0;
     ctx->r5 = 0;

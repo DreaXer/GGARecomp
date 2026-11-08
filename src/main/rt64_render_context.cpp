@@ -158,6 +158,10 @@ void set_application_user_config(RT64::Application* application, const ultramode
         application->userConfig.extAspectRatio = RT64::UserConfiguration::AspectRatio::Expand;
         break;
     }
+    // GGA (2026-11-08): always Full. The only extended LEFT / RIGHT origins in GGA are the panorama's scissor (ga_pano_begin,
+    // ga_widescreen.cpp), which must reach the window edges at any aspect (ultrawide); with Clamp16x9 (the default, not in
+    // the menus) it stopped at the 16:9 center. Nothing else uses those origins (HUD: origins NONE).
+    application->userConfig.extAspectRatio = RT64::UserConfiguration::AspectRatio::Expand;
 
     application->userConfig.aspectRatio = to_rt64(config.ar_option);
     application->userConfig.antialiasing = to_rt64(config.msaa_option);

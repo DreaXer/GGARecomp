@@ -38,9 +38,11 @@ void func_80008B6C_976C(uint8_t* rdram, recomp_context* ctx);   /* (sound id) */
  * layout of the game's J2 art: J4 is drawn as J2 (slot 1), J3 as J1 (slot 0), so the game lays each block out itself; its
  * rects are moved up by 198 (the bar's top in the game). The art: proxy textures (ga_hud_top.h, the art scaled down to two
  * 64 x 32 halves per block) written into the display list; the texture pack maps their hashes to the HD art.
- * Coordinates are in "wide units" (0..wide_w, 240 high; the 4:3 area starts at ox). In widescreen rect() compresses them into
- * 0..320 and adds invisible anchors at x 0 and 320 on the same rows: RT64 then stretches each row to the whole window (rows
- * covering the frame scissor width, rt64_framebuffer_renderer.cpp coversScissorWidthMerged), as for the panorama.
+ * Coordinates are in "wide units" (0..wide_w, 240 high; the 4:3 area starts at ox), drawn at their real size: hud_align()
+ * sets RT64's rect alignment to origins CENTER with x relative to the window center (2026-11-08). Before, rect() compressed
+ * them into 0..320 with invisible anchors at x 0 and 320 for RT64 to stretch each row back: each edge was rounded twice
+ * (1/4 native px, then the output pixel at a non integer scale), so the digits' spacing and the boxes' lines changed with
+ * every pixel of window width (user's captures), as the panorama's tiles did (ga_widescreen.cpp).
  * Tried before (2026-10-20 / 23, dropped by the user): 2 rows of one-line blocks at the bottom; a row over the whole width;
  * the game's J1 block in the 4 corners (J2 / J4 mirrored) with a wood bar between the bottom ones (tools/hud_wood.py, removed).
  */
@@ -53,12 +55,10 @@ float ga_screen_aspect(void); /* src/game/ga_widescreen.cpp */
 #define BLK_H 32.f
 #define BAR_Y 198.f /* top of the game's bar */
 static const float top_x[2] = { 16.f, 176.f }; /* J3 / J4 block left, 4:3 x (the bar's J1 / J2 halves) */
-static int stretch; /* widescreen (compress + anchors) */
 static float wide_w, ox; /* screen width and left of the 4:3 area, wide units */
 
 static void wide_layout(void) {
     const float aspect = ga_screen_aspect();
-    stretch = aspect > 4.f / 3.f + 0.01f;
     wide_w = 240.f * aspect;
     ox = (float)(int)(wide_w / 2.f) - 160.f;
 }
@@ -83,23 +83,20 @@ static uint32_t rect(uint8_t* rdram, uint32_t g, int tile, float x, float y, flo
             return g;
         }
     }
-    if (stretch) { /* wide units -> 0..320, RT64 stretches it back (see wide_layout) */
-        const float c = 320.f / wide_w;
-        x *= c;
-        w *= c;
-        dsdx /= c;
-    }
     ulx = (int)(x * 4.f + 0.5f); uly = (int)(y * 4.f + 0.5f);
     lrx = (int)((x + w) * 4.f + 0.5f); lry = (int)((y + h) * 4.f + 0.5f);
-    g = rect_raw(rdram, g, tile, ulx, uly, lrx, lry, s, t, dsdx, dtdy);
-    if (stretch) { /* invisible anchors (combiner 0, alpha 0, blended) at both edges of the same row */
-        const uint32_t fc0 = last_fc0, fc1 = last_fc1;
-        g = put(rdram, g, 0xFCFFFFFFu, 0xFFFFFFFFu);
-        g = rect_raw(rdram, g, 0, 0, uly, 4, lry, 0.f, 0.f, 1.f, 1.f);
-        g = rect_raw(rdram, g, 0, 319 * 4, uly, 320 * 4, lry, 0.f, 0.f, 1.f, 1.f);
-        g = put(rdram, g, fc0, fc1);
-    }
-    return g;
+    return rect_raw(rdram, g, tile, ulx, uly, lrx, lry, s, t, dsdx, dtdy);
+}
+
+/* RT64 rect alignment for the wide units (see the header): origins CENTER, x relative to the window center (RT64 adds 160,
+   the left of the 4:3 area is ox), y moved down by down_q (1/4 px). RT64 keeps such rects at their real size (no stretch)
+   and snaps them to the native pixel grid. gEXEnable first (ga_frame_start). */
+#define HUD_DOWN_Q 40u /* the bar 10 px down (hud_down_px of ga_widescreen.cpp) */
+static uint32_t hud_align(uint8_t* rdram, uint32_t g, uint32_t down_q) {
+    const uint32_t dx = (uint32_t)(-(int)((ox + 160.f) * 4.f)) & 0xFFFFu;
+    g = put(rdram, g, 0xE0525464u, 0x10000064u);
+    g = put(rdram, g, 0x64000006u, 0x00200200u); /* gEXSetRectAlign, origins CENTER / CENTER */
+    return put(rdram, g, (dx << 16) | down_q, (dx << 16) | down_q);
 }
 
 /* Loads a 64 x 32 RGBA16 texture as tile 0 (same commands as the game's bars, DL_BARS 4..11, other address). */
@@ -303,7 +300,7 @@ static void hud_owner(uint8_t* rdram, uint32_t state) {
  * The game's bar: its bubble frame (D_80108E18, copy-mode rect x 144..176 / y 198..230) came out stretched in
  * widescreen while the bars beside it did not (user's captures, 2026-10-23). RT64 stretches a rect that covers the scissor
  * width, alone or with its row, or whose texture is a tile copy (rt64_framebuffer_renderer.cpp, coversScissorWidth): only the
- * last fits (supposed: the bubble's sphere texture, drawn just before, is a framebuffer). So ga_hud4 draws the frame here (1-cycle; in widescreen compressed with anchors, so the stretch puts it right).
+ * last fits (supposed: the bubble's sphere texture, drawn just before, is a framebuffer). So ga_hud4 draws the frame here (1-cycle; at its real size with hud_align, never stretched).
  */
 static uint32_t one_cycle(uint8_t* rdram, uint32_t g) {
     g = put(rdram, g, 0xE7000000u, 0);
@@ -368,6 +365,7 @@ int ga_hud4(uint8_t* rdram, recomp_context* ctx) {
     wide_layout();
 
     /* the game's HUD settings (DL_BARS 0..3), full screen scissor, 1-cycle mode for everything; the bar background */
+    g = hud_align(rdram, g, HUD_DOWN_Q);
     g = copy_cmds(rdram, g, DL_BARS, 0, 3);
     g = put(rdram, g, 0xED000000u, 0x005003C0u);
     g = one_cycle(rdram, g);
@@ -442,9 +440,7 @@ int ga_hud4(uint8_t* rdram, recomp_context* ctx) {
 
     if (n == 4) {
         /* RT64's HUD offset off (the top blocks stay against the top edge), the blocks (an absent J4 shows its cross) */
-        g = put(rdram, g, 0xE0525464u, 0x10000064u); /* gEXEnable again (ga_widescreen.cpp, ga_frame_start) */
-        g = put(rdram, g, 0x64000006u, 0x00800800u); /* gEXSetRectAlign, origins NONE, no offsets */
-        g = put(rdram, g, 0u, 0u);
+        g = hud_align(rdram, g, 0u);
         g = put(rdram, g, 0xED000000u, 0x005003C0u);
         g = one_cycle(rdram, g);
         for (top = 0; top < 2; top++) {
@@ -484,6 +480,7 @@ int ga_hud_items(uint8_t* rdram, recomp_context* ctx) {
     uint32_t g = (uint32_t)ctx->r4;
     int p;
     wide_layout(); /* this runs before the HUD itself (func_800DE210, 0x800DE454) */
+    g = hud_align(rdram, g, 0u);
     g = inline_dl(rdram, g, ITEM_DL_SETUP);
     g = put(rdram, g, 0xED000000u, 0x005003C0u); /* full screen scissor (the corners) */
     for (p = 0; p < n; p++) {
@@ -497,6 +494,9 @@ int ga_hud_items(uint8_t* rdram, recomp_context* ctx) {
         src_copy = 0;
         g = rewrite(rdram, start, g, fx + 4.f - (244.f * p + 24.f), fy + 2.f - 14.f, 0.f, 1.f, 0.f); /* the game's (244 p + 24, 14) */
     }
+    g = put(rdram, g, 0xE0525464u, 0x10000064u); /* rect alignment back to NONE for what the game draws next */
+    g = put(rdram, g, 0x64000006u, 0x00800800u);
+    g = put(rdram, g, 0u, 0u);
     ctx->r2 = (gpr)(int32_t)g;
     return 1;
 }

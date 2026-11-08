@@ -522,7 +522,7 @@ text = "{ uint32_t ga_hud_end(uint8_t*, uint32_t); ctx->r2 = (gpr)(int32_t)ga_hu
 before_vram = 0x800DE580
 
 # Fonds 2D en tuiles (panorama de montagnes), func_800EE568 : en ecran large, une couche qui boucle commence 5 colonnes plus
-# tot et ses rectangles sont decales de -80 px (ga_pano_begin / ga_pano_end) ; 28 / 29 colonnes au lieu de 18 / 19.
+# tot et ses rectangles sont decales (ga_pano_begin / ga_pano_end) ; nombre de colonnes selon le rapport de la fenetre (4:3 compris).
 [[patches.hook]]
 func = "func_800EE568_5A9788"
 text = "{ void ga_pano_begin(uint8_t*, recomp_context*); ga_pano_begin(rdram, ctx); }"
@@ -533,7 +533,7 @@ func = "func_800EE568_5A9788"
 text = "{ void ga_pano_end(uint8_t*, recomp_context*); ga_pano_end(rdram, ctx); }"
 before_vram = 0x800EF75C
 
-# Limites de colonnes ($v0 = min(largeur, 18), $a0 = min(largeur + 1, 19), $t0 = largeur) : 28 / 29 seulement pendant un
+# Limites de colonnes ($v0 = min(largeur, 18), $a0 = min(largeur + 1, 19), $t0 = largeur) : elargies seulement pendant un
 # panorama elargi (tuiles ecrites dans le tas de listes, sinon la liste de la scene deborde et la 3D disparait).
 [[patches.hook]]
 func = "func_800EE568_5A9788"
@@ -671,6 +671,13 @@ before_vram = 0x800E0FF4
 func = "func_800E0C44_59BE64"
 text = "{ int32_t ga_cull_box(int32_t); ctx->r25 = ga_cull_box((int32_t)ctx->r25); }"
 before_vram = 0x800E1010
+
+# Juste apres l'allocation des cellules de la boite (func_80005604 ; $v0 = bloc ou 0, $s0 = taille) : en cas d'echec (passe
+# sautee, decor des cotes absent en fenetre tres large / x2), ga_cull_alloc abaisse le facteur de la boite.
+[[patches.hook]]
+func = "func_800E0C44_59BE64"
+text = "{ void ga_cull_alloc(uint32_t, uint32_t); ga_cull_alloc((uint32_t)ctx->r2, (uint32_t)ctx->r16); }"
+before_vram = 0x800E1278
 
 # Point de jonction des 4 chemins de func_800E16A8 (creation des noeuds du decor) : $s2 = noeud, $s3 = noeud + 0x58 / + 0x3C.
 [[patches.hook]]

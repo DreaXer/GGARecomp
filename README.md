@@ -13,7 +13,7 @@ game, with enhancements such as high framerates, widescreen and up to 4 players.
 
 ### **This repository and its releases do not contain game assets. You need your own copy of the original game to play or build this project.**
 
-> **Version 0.1.0 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
+> **Version 0.1.1 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
 > to finish. World 4 has not been tested yet: expect problems there, and keep a backup of your saves.
 
 ## Supported ROM
@@ -56,7 +56,7 @@ If the game crashes on startup, update your graphics drivers first.
 
 ## How to play
 
-1. Download `GGARecompiled-v0.1.0-windows.zip` from the [releases](https://github.com/DreaXer/GGARecomp/releases)
+1. Download `GGARecompiled-v0.1.1-windows.zip` from the [releases](https://github.com/DreaXer/GGARecomp/releases)
    and extract it anywhere.
 2. Run `GGARecompiled.exe`.
 3. On first launch, the launcher asks for your Goemon's Great Adventure ROM. It is copied to
