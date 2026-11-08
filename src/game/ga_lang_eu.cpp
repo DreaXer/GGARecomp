@@ -24,7 +24,7 @@
 
 namespace {
 
-constexpr const char* EU_ROM_NAME = "goemon2.eu.z64"; // in the application folder (next to the saves)
+constexpr const char* EU_ROM_NAME = "goemon2.eu.z64"; // in the application folder, next to gga.us.z64 (not in saves/)
 constexpr uint32_t LANG_ADDR = 0x80088200;        // D_80088200, written by the language screen of the title menu
 constexpr uint32_t LOAD_TABLE = 0x80026B00;       // {start, end} per game file (idx - 1)
 
