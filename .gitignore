@@ -17,3 +17,5 @@ rsp/
 # third-party tools (download them: N64Recomp releases), local Claude settings
 *.exe
 .claude/settings.local.json
+# assistant instructions, kept local
+CLAUDE.md
