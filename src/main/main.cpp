@@ -471,6 +471,8 @@ static DWORD WINAPI gga_watchdog(void*) {
     }
 }
 
+#else
+extern "C" void gga_watchdog_tick() {} // GGA TEMP watchdog is Windows-only
 #endif
 gpr get_entrypoint_address();
 
