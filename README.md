@@ -37,7 +37,8 @@ texts:
 | Header code | `NGMP` |
 | SHA-1 | `aadd1d7e943cbfa5496a370158b5f8fe17b06415` |
 
-1. Copy it, in `.z64` format, to `%LOCALAPPDATA%\GGARecompiled\` and name it `goemon2.eu.z64` (next to your saves).
+1. Copy it, in `.z64` format, to `%LOCALAPPDATA%\GGARecompiled\` and name it `goemon2.eu.z64`: the same folder as
+   `gga.us.z64` (the copy of your US ROM made by the launcher), **not** inside the `saves` folder.
 2. Start the game: the title screen now shows **Option**, then **Language**, with **English / Français / Deutsch**,
    like the European release.
 
