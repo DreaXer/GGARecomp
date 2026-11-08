@@ -13,7 +13,7 @@ game, with enhancements such as high framerates, widescreen and up to 4 players.
 
 ### **This repository and its releases do not contain game assets. You need your own copy of the original game to play or build this project.**
 
-> **Version 0.1.1 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
+> **Version 0.2.0 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
 > to finish. World 4 has not been tested yet: expect problems there, and keep a backup of your saves.
 
 ## Supported ROM
@@ -47,24 +47,28 @@ The dialogues, the font with accented letters, the title menu, the world map, th
 
 ## System requirements
 
-- Windows 10 or 11, 64-bit. (No Linux or macOS build yet.)
-- A GPU supporting Direct3D 12.0 (Shader Model 6) or Vulkan 1.2.
+- Windows 10 or 11, 64-bit, or Linux x86-64 (tested on Ubuntu with X11). No macOS build yet.
+- A GPU supporting Direct3D 12.0 (Shader Model 6) or Vulkan 1.2 (Vulkan only on Linux).
 - A CPU supporting AVX.
-- The [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe). Most PCs already
-  have it; without it, Windows reports a missing `MSVCP140.dll`.
+- Windows: the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe). Most PCs
+  already have it; without it, Windows reports a missing `MSVCP140.dll`.
+- Linux: SDL2, GTK 3, FreeType and a Vulkan driver, for example on Ubuntu / Debian:
+  `sudo apt install libsdl2-2.0-0 libgtk-3-0 libfreetype6 mesa-vulkan-drivers`.
 
 If the game crashes on startup, update your graphics drivers first.
 
 ## How to play
 
-1. Download `GGARecompiled-v0.1.1-windows.zip` from the [releases](https://github.com/DreaXer/GGARecomp/releases)
-   and extract it anywhere.
-2. Run `GGARecompiled.exe`.
+1. Download `GGARecompiled-v0.2.0-windows.zip` (or `GGARecompiled-v0.2.0-linux.tar.gz`) from the
+   [releases](https://github.com/DreaXer/GGARecomp/releases) and extract it anywhere.
+2. Run `GGARecompiled.exe`. On Linux, open a terminal **in the extracted folder** and run `./GGARecompiled` (started
+   from another folder, the game does not find its `assets` folder).
 3. On first launch, the launcher asks for your Goemon's Great Adventure ROM. It is copied to
-   `%LOCALAPPDATA%\GGARecompiled\`.
+   `%LOCALAPPDATA%\GGARecompiled\` (Linux: `~/.config/GGARecompiled/`).
 4. Start the game from the launcher.
 
-Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGARecompiled\`.
+Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGARecompiled\` (Linux:
+`~/.config/GGARecompiled/`).
 
 ## Features
 
@@ -72,7 +76,7 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
   (Graphics > Framerate). Characters, carried players and scenery are interpolated.
 - **Widescreen**: Aspect Ratio Expand shows more of the world in 16:9. Scenery, objects and enemies appear and wake up
   at the edges of the wider view, the 2D backgrounds fill the whole width, and the HUD stays at the bottom like the
-  original.
+  original. The startup logos stay centered, with white sides instead of black bands.
 - **Up to 4 players**: the 1P / 2P menu also offers 3P and 4P (greyed out without enough controllers). Players 3 and 4
   are real players, with their own HUD, lives, money and weapons, kept between areas and levels, on the world map too.
 - **Controller Pak saves**: saving and loading work like on the console (Controller Pak emulated on port 1).
@@ -95,7 +99,7 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
 
 Open an [issue](https://github.com/DreaXer/GGARecomp/issues) with:
 
-- the version (for example 0.1.0) and your Windows version;
+- the version (for example 0.2.0) and your Windows version or Linux distribution;
 - where it happened (world, level, area), how many players, and what you did just before;
 - what happened (freeze, crash, black textures, wrong sound…), with a screenshot if possible;
 - your graphics settings (Framerate, Aspect Ratio);
