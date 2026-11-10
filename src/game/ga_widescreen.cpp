@@ -280,9 +280,7 @@ extern "C" uint32_t ga_hud_end(uint8_t* rdram, uint32_t gfx) {
 static constexpr uint32_t hud_down_px = 10;
 
 // func_800DE210, before the jal func_800DDFC8 (hook at 0x800DE578, $s1 = &gfx pointer D_8010FCE0).
-extern "C" void gga_watchdog_tick(); // GGA TEMP (freeze of player 4, main.cpp)
 extern "C" void ga_hud_begin(uint8_t* rdram, recomp_context* ctx) {
-    gga_watchdog_tick();
     // Full screen (was x 16..304 / y 8..232): with the HUD's x 16..304, the row J1 bars + bubble frame + J2 bars covered the
     // scissor's whole width and RT64 stretched the last rect, the frame (oval in widescreen, user's capture 2026-10-23).
     MEM_W(0, (int32_t)(GA_DL_BARS_SCISSOR_W1 - 4)) = (int32_t)0xED000000;
@@ -533,6 +531,57 @@ static uint32_t tag_mix(uint32_t x) {
 // func_800D4CEC before 0x800D4D50 ($v0 = node taken from the free list).
 extern "C" void ga_tag_alloc(recomp_context* ctx) {
     tag_of_node[(uint32_t)ctx->r2] = tag_mix(++tag_serial * 0x9E3779B9u);
+}
+
+// Scene node pools (func_800D4A58(desc, handler, size, count), file 6, read 2026-11-10): each node type has a fixed count of
+// nodes, allocated once from the game's heap when the scene starts (func_800D45A0). Made for a 4:3 view: in a wide window
+// more scenery / objects are visible, the free list runs dry and func_800D4CEC returns 0 -> nodes not drawn (a platform the
+// player still stands on), enemies' coins not created. Measured (ga_node_trace): type 8 (func_800D7720, 20 x 0xB8, drawn by
+// func_800D5E98) empty from aspect 1.83, type 10 (func_800D77A8, 80 x 0x84, func_800D60BC) from 2.35; once the objects' pool
+// was enlarged (ga.toml), types 13 (func_800EFA28, 50 x 0x80) and 14 (func_800EFB24, 50 x 0x84) at 5.00, type 6
+// (func_800D7698, 60 x 0x5C, func_800D6328) at 3.88. Their count is
+// multiplied at the creators' entry; if the heap cannot give the bigger block, the original count is allocated instead.
+static constexpr int32_t NODE_POOL_MULT = 4;
+static int32_t node_pool_orig = 0; // original count of the pool being created, 0 = none
+static int32_t node_pool_size = 0;
+extern "C" void ga_node_pool_grow(recomp_context* ctx, int32_t size) {
+    node_pool_orig = (int32_t)ctx->r4;
+    node_pool_size = size;
+    ctx->r4 = node_pool_orig * NODE_POOL_MULT;
+}
+
+// func_800D4A58 right after the heap allocation (hook before 0x800D4B1C: $v0 = block or 0, $s1 = pool entry, +0xC count h,
+// +0xE size h). Returns 1 when the caller must allocate again with $a0 (original count restored).
+extern "C" int ga_node_pool_retry(uint8_t* rdram, recomp_context* ctx) {
+    const int32_t orig = node_pool_orig;
+    node_pool_orig = 0;
+    const int32_t pool = (int32_t)ctx->r17;
+    if (orig == 0 || (int32_t)ctx->r2 != 0 || (MEM_H(0xE, pool) & 0xFFFF) != node_pool_size) {
+        return 0;
+    }
+    fprintf(stderr, "[GGA NODE] pool of %d x 0x%X: heap too small for x%d, original count kept\n", orig, node_pool_size,
+        NODE_POOL_MULT);
+    MEM_H(0xC, pool) = (int16_t)orig;
+    ctx->r4 = orig * node_pool_size;
+    return 1;
+}
+
+// func_800D4CEC(type) entry: one [GGA NODE] line (--log) the first time a node type's free list is empty (that pool needs
+// ga_node_pool_grow too). Pools D_80172F70 + type * 0x1C: +4 free head, +0xC count (h), +0xE size (h).
+extern "C" void ga_node_trace(uint8_t* rdram, recomp_context* ctx) {
+    static bool reported[25];
+    const int32_t type = (int32_t)ctx->r4;
+    if (type < 0 || type >= 25 || reported[type]) {
+        return;
+    }
+    const int32_t pool = (int32_t)(0x80172F70u + type * 0x1C);
+    if (MEM_W(4, pool) != 0) {
+        return;
+    }
+    reported[type] = true;
+    const uint32_t cs = (uint32_t)MEM_W(0xC, pool);
+    fprintf(stderr, "[GGA NODE] type %d empty: count %u size 0x%X aspect %.2f\n", type, cs >> 16, cs & 0xFFFF,
+        target_aspect());
 }
 
 // func_800E16A8 at 0x800E1B90 ($s2 = scenery node, $s4 = cull data, $s7 = element index).

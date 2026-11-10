@@ -6,6 +6,7 @@ RT64 writes, per texture (name = its replacement hash): <hash>.v5.tile.json (ren
 
   python tools/tex_dump.py fringe <dump folder>   list the textures whose transparent texels next to opaque ones have a
                                                   very different color (what bilinear filtering shows as a colored fringe)
+  (OBSOLETE since 2026-11-11: the same fix runs in the app, gga_fix_fringe in src/main/rt64_render_context.cpp)
   python tools/tex_dump.py bleed <dump folder>    texture pack build/gga_fringe_fix.rtz: those textures whose transparent
                                                   texels are a saturated key color (bright green, magenta: never meant to be
                                                   seen) get them recolored with the nearest opaque color ("alpha bleeding",
@@ -178,9 +179,9 @@ def bleed(folder):
         key = (g >= 150 and r <= 60 and b <= 140) or (r >= 200 and b >= 200 and g <= 60)  # green / magenta key colors only:
         if d < 150 or not key:  # an opaque texture may have meaningless alpha bits (e.g. red (185, 4, 1) seen, 2026-10-21)
             continue
-        # color-indexed: fixed in RDRAM at each palette load (gga_fix_tlut, src/main/rt64_render_context.cpp). Replacements of
-        # the village background (CI8 stacks of 16 x 16 tiles) showed lines / ghost roofs at tile edges, cause not proven (CI or
-        # stacking): stacks of tiles are left out too
+        # color-indexed textures are left out (the village background's green fringe came from the widened panorama, fixed in
+        # ga_widescreen.cpp, 2026-10-24). Replacements of the village background (CI8 stacks of 16 x 16 tiles) showed lines /
+        # ghost roofs at tile edges, cause not proven (CI or stacking): stacks of tiles are left out too
         if fmt_of(folder, base) == 2 or (h > w and h % w == 0):
             continue
         _, _, rows = decode(folder, base)

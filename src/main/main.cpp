@@ -382,97 +382,6 @@ static LONG CALLBACK gga_crash_report(PEXCEPTION_POINTERS info) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-// GGA TEMP diagnostic (freeze when player 4 joins, 2026-10-22): with --log, when no HUD frame (gga_watchdog_tick, called by
-// ga_hud_begin) for 3 s, 5 samples 300 ms apart of every thread's call stack (exe offsets) into build\gga_hang.txt, in the
-// format of python tools\crash_where.py --log. Each thread is suspended only while its stack is read, and nothing that may
-// take a lock (heap, CRT stream) runs while it is suspended.
-#include <tlhelp32.h>
-static volatile LONG gga_frames = 0;
-extern "C" void gga_watchdog_tick() { InterlockedIncrement(&gga_frames); }
-
-static void gga_hang_dump(HANDLE out, int sample) {
-    const uintptr_t exe = (uintptr_t)GetModuleHandleW(nullptr);
-    const auto* nt = (const IMAGE_NT_HEADERS*)(exe + ((const IMAGE_DOS_HEADER*)exe)->e_lfanew);
-    const uintptr_t size = nt->OptionalHeader.SizeOfImage;
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    THREADENTRY32 te{};
-    te.dwSize = sizeof(te);
-    static char buf[4096];
-    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
-        if (te.th32OwnerProcessID != GetCurrentProcessId() || te.th32ThreadID == GetCurrentThreadId()) {
-            continue;
-        }
-        HANDLE t = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
-        if (t == nullptr) {
-            continue;
-        }
-        DWORD64 pcs[48];
-        int n = 0;
-        if (SuspendThread(t) != (DWORD)-1) {
-            CONTEXT c{};
-            c.ContextFlags = CONTEXT_FULL;
-            if (GetThreadContext(t, &c)) {
-                for (int d = 0; d < 48 && c.Rip != 0; d++) {
-                    pcs[n++] = c.Rip;
-                    DWORD64 base = 0;
-                    PRUNTIME_FUNCTION fe = RtlLookupFunctionEntry(c.Rip, &base, nullptr);
-                    if (fe == nullptr) { // leaf function: return address on top of the stack
-                        c.Rip = *(DWORD64*)c.Rsp;
-                        c.Rsp += 8;
-                        continue;
-                    }
-                    void* hd = nullptr;
-                    DWORD64 ef = 0;
-                    RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, c.Rip, fe, &c, &hd, &ef, nullptr);
-                }
-            }
-            ResumeThread(t);
-        }
-        CloseHandle(t);
-        int len = snprintf(buf, sizeof(buf), "%d fn T%lu:", sample, te.th32ThreadID);
-        for (int i = 0; i < n; i++) {
-            if (pcs[i] >= exe && pcs[i] - exe < size && len < (int)sizeof(buf) - 24) {
-                len += snprintf(buf + len, sizeof(buf) - len, " %llX", (unsigned long long)(pcs[i] - exe));
-            }
-        }
-        len += snprintf(buf + len, sizeof(buf) - len, "\r\n");
-        DWORD written = 0;
-        WriteFile(out, buf, (DWORD)len, &written, nullptr);
-    }
-    CloseHandle(snap);
-}
-
-static DWORD WINAPI gga_watchdog(void*) {
-    LONG last = gga_frames;
-    int still = 0, dumped = 0;
-    for (;;) {
-        Sleep(500);
-        const LONG now = gga_frames;
-        if (now != last) {
-            last = now;
-            still = 0;
-            dumped = 0;
-            continue;
-        }
-        if (now == 0 || dumped || ++still < 6) {
-            continue;
-        }
-        dumped = 1;
-        HANDLE out = CreateFileW(L"build\\gga_hang.txt", FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                                 FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (out == INVALID_HANDLE_VALUE) {
-            continue;
-        }
-        for (int s = 1; s <= 5; s++) {
-            gga_hang_dump(out, s);
-            Sleep(300);
-        }
-        CloseHandle(out);
-    }
-}
-
-#else
-extern "C" void gga_watchdog_tick() {} // GGA TEMP watchdog is Windows-only
 #endif
 gpr get_entrypoint_address();
 
@@ -739,8 +648,6 @@ int main(int argc, char** argv) {
             DeleteFileW(gga_crash_path);
             const bool on = AddVectoredExceptionHandler(1, gga_crash_report) != nullptr;
             fprintf(stderr, "[GGA] crash reporter %s -> gga_crash.txt (working directory)\n", on ? "installed" : "NOT installed");
-            DeleteFileW(L"build\\gga_hang.txt"); // GGA TEMP (freeze of player 4)
-            CloseHandle(CreateThread(nullptr, 0, gga_watchdog, nullptr, 0, nullptr));
             break;
         }
     }

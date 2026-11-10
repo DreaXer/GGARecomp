@@ -2,6 +2,8 @@
 #include <cstring>
 #include <variant>
 #include <algorithm>
+#include <unordered_map>
+#include <cmath>
 
 #define HLSL_CPU
 #include "hle/rt64_application.h"
@@ -352,7 +354,170 @@ goemon64::renderer::RT64Context::~RT64Context() = default;
 static uint32_t gga_dl_steps, gga_dl_dd, gga_dl_04, gga_dl_b8;
 
 
-static uint64_t gga_check_dl(uint8_t* rdram, uint32_t start, bool report = true) {
+// Green fringe around trees / fences (2026-11-11, replaces the gga_fringe_fix.rtz pack, which cannot be shipped): RGBA16
+// textures with 1-bit alpha whose transparent texels hold a saturated key color (green (49, 255, 0) / (0, 255, 131),
+// magenta), invisible at 320 x 240 on the N64 but blended into the edges by RT64's bilinear filter at high resolution. Same
+// rule as tools/tex_dump.py bleed: when the transparent texels next to opaque ones are mostly a key color, every transparent
+// texel takes the mean color of its colored neighbours, ring after ring from the opaque ones; alpha unchanged. Done in RDRAM
+// before RT64 reads the list (RT64 hashes the fixed texels). A stack of square tiles (h multiple of w) is fixed tile by tile.
+// RDRAM holds 32-bit words with reversed bytes: the 16-bit texel at physical p is at rdram + (p ^ 2).
+static inline uint16_t gga_tx(uint8_t* rdram, uint32_t p) { return *reinterpret_cast<uint16_t*>(rdram + (p ^ 2)); }
+
+static void gga_bleed_tile(uint8_t* rdram, uint32_t addr, uint32_t stride, int w, int h) {
+    static uint8_t done[2048];
+    static uint16_t px[2048];
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            px[y * w + x] = gga_tx(rdram, addr + y * stride + x * 2);
+            done[y * w + x] = px[y * w + x] & 1;
+        }
+    }
+    static const int nx[8] = { -1, 1, 0, 0, -1, 1, -1, 1 }, ny[8] = { 0, 0, -1, 1, -1, -1, 1, 1 };
+    static uint32_t ring[2048];
+    for (;;) {
+        int n = 0;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (done[y * w + x]) {
+                    continue;
+                }
+                int r = 0, g = 0, b = 0, k = 0;
+                for (int d = 0; d < 8; d++) {
+                    const int xx = x + nx[d], yy = y + ny[d];
+                    if (xx >= 0 && xx < w && yy >= 0 && yy < h && done[yy * w + xx]) {
+                        const uint16_t v = px[yy * w + xx];
+                        r += v >> 11; g += (v >> 6) & 31; b += (v >> 1) & 31; k++;
+                    }
+                }
+                if (k) {
+                    ring[n++] = (uint32_t)(y * w + x) | ((uint32_t)((r / k) << 11 | (g / k) << 6 | (b / k) << 1) << 16);
+                }
+            }
+        }
+        if (n == 0) {
+            break;
+        }
+        for (int i = 0; i < n; i++) { // a ring is applied after it is computed, as in the tool
+            const uint32_t at = ring[i] & 0xFFFF;
+            px[at] = (uint16_t)(ring[i] >> 16); // alpha bit stays 0
+            done[at] = 1;
+        }
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            *reinterpret_cast<uint16_t*>(rdram + ((addr + y * stride + x * 2) ^ 2)) = px[y * w + x];
+        }
+    }
+}
+
+static void gga_fix_fringe(uint8_t* rdram, uint32_t addr, uint32_t stride, int w, int h) {
+    if (w <= 0 || h <= 0 || w * h > 2048 || (uint64_t)addr + (uint64_t)stride * h > 0x20000000ull) {
+        return; // TMEM holds 2048 RGBA16 texels: anything bigger is a misread size
+    }
+    // Seen before with the same content (after the fix, or judged not to need one): nothing to do.
+    static std::unordered_map<uint64_t, uint64_t> seen;
+    const uint64_t key = (uint64_t)addr << 24 | (uint64_t)w << 12 | (uint64_t)h;
+    auto content = [&]() {
+        uint64_t hsh = 1469598103934665603ull;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                hsh = (hsh ^ gga_tx(rdram, addr + y * stride + x * 2)) * 1099511628211ull;
+            }
+        }
+        return hsh;
+    };
+    const uint64_t before = content();
+    if (auto it = seen.find(key); it != seen.end() && it->second == before) {
+        return;
+    }
+    // Transparent texels next to opaque ones: mean color and mean difference to those opaque neighbours (tool's edge_stats).
+    int n = 0;
+    double diff = 0, mr = 0, mg = 0, mb = 0;
+    auto c8 = [](uint16_t v, int s) { return ((v >> s) & 31) * 255 / 31; };
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const uint16_t v = gga_tx(rdram, addr + y * stride + x * 2);
+            if (v & 1) {
+                continue;
+            }
+            int k = 0, r = 0, g = 0, b = 0;
+            static const int nx[4] = { -1, 1, 0, 0 }, ny[4] = { 0, 0, -1, 1 };
+            for (int d = 0; d < 4; d++) {
+                const int xx = x + nx[d], yy = y + ny[d];
+                if (xx >= 0 && xx < w && yy >= 0 && yy < h) {
+                    const uint16_t o = gga_tx(rdram, addr + yy * stride + xx * 2);
+                    if (o & 1) { r += c8(o, 11); g += c8(o, 6); b += c8(o, 1); k++; }
+                }
+            }
+            if (k == 0) {
+                continue;
+            }
+            n++;
+            diff += std::abs(c8(v, 11) - r / (double)k) + std::abs(c8(v, 6) - g / (double)k) + std::abs(c8(v, 1) - b / (double)k);
+            mr += c8(v, 11); mg += c8(v, 6); mb += c8(v, 1);
+        }
+    }
+    if (n > 0) {
+        diff /= n; mr /= n; mg /= n; mb /= n;
+        const bool key_color = (mg >= 150 && mr <= 60 && mb <= 140) || (mr >= 200 && mb >= 200 && mg <= 60);
+        if (diff >= 150 && key_color) {
+            const int th = (h > w && h % w == 0) ? w : h;
+            for (int y0 = 0; y0 < h; y0 += th) {
+                gga_bleed_tile(rdram, addr + y0 * stride, stride, w, th);
+            }
+            static int logged = 0;
+            if (logged++ < 20) {
+                fprintf(stderr, "[GGA FRINGE] texture 0x%08X %dx%d: key color (%.0f, %.0f, %.0f) bled\n", addr, w, h, mr, mg, mb);
+            }
+        }
+    }
+    seen[key] = content();
+}
+
+// Texture loads seen while walking a list (gga_check_dl with fix = true).
+struct GgaTexState {
+    uint32_t timg = 0, timg_w = 0;
+    bool timg_rgba16 = false;
+    uint32_t block_addr = 0, block_texels = 0; // a G_LOADBLOCK waiting for its render tile's line (G_SETTILE)
+};
+
+static void gga_texture_cmd(uint8_t* rdram, GgaTexState& t, const uint32_t* seg, uint32_t w0, uint32_t w1) {
+    switch (w0 >> 24) {
+    case 0xFD: // G_SETTIMG fmt, siz, width - 1, address
+        t.timg = (seg[(w1 >> 24) & 0xF] + (w1 & 0x00FFFFFF)) & 0x1FFFFFFF;
+        t.timg_w = (w0 & 0xFFF) + 1;
+        t.timg_rgba16 = ((w0 >> 21) & 7) == 0 && ((w0 >> 19) & 3) == 2;
+        break;
+    case 0xF3: // G_LOADBLOCK uls, ult | tile, lrs, dxt
+        t.block_addr = 0;
+        if (t.timg_rgba16 && (w0 & 0xFFFFFF) == 0) {
+            t.block_addr = t.timg;
+            t.block_texels = ((w1 >> 12) & 0xFFF) + 1;
+        }
+        break;
+    case 0xF4: // G_LOADTILE uls, ult | tile, lrs, lrt (10.2 fixed point)
+        if (t.timg_rgba16) {
+            const uint32_t x0 = (w0 >> 14) & 0x3FF, y0 = (w0 >> 2) & 0x3FF, x1 = (w1 >> 14) & 0x3FF, y1 = (w1 >> 2) & 0x3FF;
+            if (x1 >= x0 && y1 >= y0) {
+                gga_fix_fringe(rdram, t.timg + (y0 * t.timg_w + x0) * 2, t.timg_w * 2, x1 - x0 + 1, y1 - y0 + 1);
+            }
+        }
+        break;
+    case 0xF5: // G_SETTILE fmt, siz, line (64-bit words), tmem | tile: the render tile after a block load gives its width
+        if (t.block_addr != 0 && ((w1 >> 24) & 7) != 7) {
+            const uint32_t line = (w0 >> 9) & 0x1FF;
+            if (((w0 >> 21) & 7) == 0 && ((w0 >> 19) & 3) == 2 && line != 0) {
+                const int w = (int)line * 4;
+                gga_fix_fringe(rdram, t.block_addr, line * 8, w, (int)(t.block_texels / w));
+            }
+            t.block_addr = 0;
+        }
+        break;
+    }
+}
+
+static uint64_t gga_check_dl(uint8_t* rdram, uint32_t start, bool report = true, bool fix = false) {
+    GgaTexState tex;
     gga_dl_steps = gga_dl_dd = gga_dl_04 = gga_dl_b8 = 0;
     static int reports = 0;
     uint64_t hash = 1469598103934665603ull;
@@ -391,6 +556,9 @@ static uint64_t gga_check_dl(uint8_t* rdram, uint32_t start, bool report = true)
         if (op == 0xDB && ((w0 >> 16) & 0xFF) == 6) { // G_MOVEWORD G_MW_SEGMENT
             seg[(w0 >> 2) & 0xF] = w1;
         }
+        if (fix && op >= 0xF3 && op <= 0xFD) {
+            gga_texture_cmd(rdram, tex, seg, w0, w1);
+        }
         if (op == 0xDE) { // G_DL
             const uint32_t to = (seg[(w1 >> 24) & 0xF] + (w1 & 0x00FFFFFF)) & 0x00FFFFF8;
             if (nh < 48) { hops[nh++] = { pc, to, w1 }; }
@@ -422,7 +590,7 @@ static uint64_t gga_check_dl(uint8_t* rdram, uint32_t start, bool report = true)
 void goemon64::renderer::RT64Context::send_dl(const OSTask* task) {
     check_texture_pack_actions();
     const uint32_t dl_start = task->t.data_ptr & 0x3FFFFFF;
-    const uint64_t before = gga_check_dl(app->core.RDRAM, dl_start);
+    const uint64_t before = gga_check_dl(app->core.RDRAM, dl_start, true, true);
     app->state->rsp->reset();
     app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
     static uint32_t logged = 0;

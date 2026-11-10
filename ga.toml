@@ -712,6 +712,91 @@ func = "func_800D4CEC_58FF0C"
 text = "{ void ga_tag_alloc(recomp_context*); ga_tag_alloc(ctx); }"
 before_vram = 0x800D4D50
 
+# Reserves de noeuds de scene faites pour le 4:3 (vides en fenetre large : decor / objets non dessines, pieces non creees) :
+# types 8 (func_800D7720) et 10 (func_800D77A8) creees x 4 ; si le tas manque, taille d'origine (ga_widescreen.cpp).
+[[patches.hook]]
+func = "func_800D7720_592940"
+text = "{ void ga_node_pool_grow(recomp_context*, int32_t); ga_node_pool_grow(ctx, 0xB8); }"
+before_vram = 0x800D7720
+
+[[patches.hook]]
+func = "func_800D77A8_5929C8"
+text = "{ void ga_node_pool_grow(recomp_context*, int32_t); ga_node_pool_grow(ctx, 0x84); }"
+before_vram = 0x800D77A8
+
+# Type 6 (func_800D7698, 60 x 0x5C, gestionnaire func_800D6328) : vide a 3,88 (mesure 2026-11-11, sans defaut vu).
+[[patches.hook]]
+func = "func_800D7698_5928B8"
+text = "{ void ga_node_pool_grow(recomp_context*, int32_t); ga_node_pool_grow(ctx, 0x5C); }"
+before_vram = 0x800D7698
+
+# Types 13 (func_800EFA28, 50 x 0x80) et 14 (func_800EFB24, 50 x 0x84) : vides une fois la reserve des objets agrandie
+# (mesure 2026-11-10, rapport 5,00 : coups qui traversent un ennemi, ni ame ni piece).
+[[patches.hook]]
+func = "func_800EFA28_5AAC48"
+text = "{ void ga_node_pool_grow(recomp_context*, int32_t); ga_node_pool_grow(ctx, 0x80); }"
+before_vram = 0x800EFA28
+
+[[patches.hook]]
+func = "func_800EFB24_5AAD44"
+text = "{ void ga_node_pool_grow(recomp_context*, int32_t); ga_node_pool_grow(ctx, 0x84); }"
+before_vram = 0x800EFB24
+
+[[patches.hook]]
+func = "func_800D4A58_58FC78"
+text = "{ int ga_node_pool_retry(uint8_t*, recomp_context*); if (ga_node_pool_retry(rdram, ctx)) { func_80005530_6130(rdram, ctx); } }"
+before_vram = 0x800D4B1C
+
+# Reserve des objets du jeu : 100 cases fixes de 0x80 (D_8016FCF8, bss), faites pour le 4:3 ; pleine en fenetre tres large
+# (portee d'apparition elargie) -> ame et piece des ennemis tues non creees (mesure 2026-11-10). Deplacee en RDRAM etendue
+# libre a 0x80D00000 avec 250 cases (250 : le nombre de cases d'un objet est un octet, +2). Seules func_800D3E64 (mise a
+# zero) et func_800D3EC0 (reservation) citent le tableau. Zones voisines : traductions 0x80E00000.., mods 0x81000000..
+[[patches.instruction]]
+func = "func_800D3E64_58F084"
+vram = 0x800D3E70
+value = 0x3C1080D0 # lui $s0, %hi(D_8016FCF8) -> lui $s0, 0x80D0
+
+[[patches.instruction]]
+func = "func_800D3E64_58F084"
+vram = 0x800D3E74
+value = 0x3C1180D0 # lui $s1, %hi(D_80172EF8) -> lui $s1, 0x80D0
+
+[[patches.instruction]]
+func = "func_800D3E64_58F084"
+vram = 0x800D3E7C
+value = 0x26317D00 # addiu $s1, %lo(D_80172EF8) -> addiu $s1, 0x7D00 (fin = 0x80D00000 + 250 * 0x80)
+
+[[patches.instruction]]
+func = "func_800D3E64_58F084"
+vram = 0x800D3E80
+value = 0x26100000 # addiu $s0, %lo(D_8016FCF8) -> addiu $s0, 0
+
+[[patches.instruction]]
+func = "func_800D3EC0_58F0E0"
+vram = 0x800D3EC4
+value = 0x3C0580D0 # lui $a1, %hi(D_8016FCF8) -> lui $a1, 0x80D0
+
+[[patches.instruction]]
+func = "func_800D3EC0_58F0E0"
+vram = 0x800D3ED0
+value = 0x240A00FA # addiu $t2, $zero, 100 -> 250 (nombre de cases)
+
+[[patches.instruction]]
+func = "func_800D3EC0_58F0E0"
+vram = 0x800D3ED4
+value = 0x24A50000 # addiu $a1, %lo(D_8016FCF8) -> addiu $a1, 0
+
+[[patches.instruction]]
+func = "func_800D3EC0_58F0E0"
+vram = 0x800D3F14
+value = 0x286100FA # slti $at, $v1, 100 -> 250 (objet de plusieurs cases)
+
+# Signale (une ligne [GGA NODE] par type, journal --log) une reserve de noeuds vide : a agrandir comme ci-dessus (ga_node_trace).
+[[patches.hook]]
+func = "func_800D4CEC_58FF0C"
+text = "{ void ga_node_trace(uint8_t*, recomp_context*); ga_node_trace(rdram, ctx); }"
+before_vram = 0x800D4CEC
+
 # Objets du niveau (overlay 8) : portees d'apparition / de suppression (table D_801B4508) elargies en ecran large
 # (ga_spawn_scale, src/game/ga_widescreen.cpp).
 [[patches.hook]]
