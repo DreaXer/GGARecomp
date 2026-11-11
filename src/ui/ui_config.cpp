@@ -30,12 +30,14 @@ int recompui::config_tab_to_index(recompui::ConfigTab tab) {
         return 1;
     case recompui::ConfigTab::Graphics:
         return 2;
-    case recompui::ConfigTab::Sound:
+    case recompui::ConfigTab::Enhanced:
         return 3;
-    case recompui::ConfigTab::Mods:
+    case recompui::ConfigTab::Sound:
         return 4;
-    case recompui::ConfigTab::Debug:
+    case recompui::ConfigTab::Mods:
         return 5;
+    case recompui::ConfigTab::Debug:
+        return 6;
     default:
         assert(false && "Unknown config tab.");
         return 0;
@@ -188,7 +190,18 @@ void close_config_menu_impl() {
 extern SDL_Window* window;
 #endif
 
+// GGA: Draw Distance (Graphics tab) is applied by Apply like the renderer options: pending value new_draw_distance
+// (defined after control_options_context).
+static bool draw_distance_changed();
+static void apply_draw_distance();
+static void reset_draw_distance();
+
+static bool graphics_options_changed() {
+    return ultramodern::renderer::get_graphics_config() != new_options || draw_distance_changed();
+}
+
 void apply_graphics_config(void) {
+    apply_draw_distance();
     ultramodern::renderer::set_graphics_config(new_options);
 #if defined(__linux__) // TODO: Remove once RT64 gets native fullscreen support on Linux
     if (new_options.wm_option == ultramodern::renderer::WindowMode::Fullscreen) {
@@ -200,7 +213,7 @@ void apply_graphics_config(void) {
 }
 
 void close_config_menu() {
-    if (ultramodern::renderer::get_graphics_config() != new_options) {
+    if (graphics_options_changed()) {
         recompui::open_choice_prompt(
             "Graphics options have changed",
             "Would you like to apply or discard the changes?",
@@ -213,6 +226,7 @@ void close_config_menu() {
             },
             []() {
                 new_options = ultramodern::renderer::get_graphics_config();
+                reset_draw_distance();
                 graphics_model_handle.DirtyAllVariables();
                 close_config_menu_impl();
             },
@@ -260,9 +274,17 @@ struct ControlOptionsContext {
     goemon64::UnlockCharacters unlock_characters;
     goemon64::ReplayCastles replay_castles;
     goemon64::Rt64DeveloperMode rt64_developer_mode;
+    goemon64::SaveAnywhere save_anywhere; // shown in the Enhanced tab (enhanced_model), saved in general.json
 };
 
+Rml::DataModelHandle enhanced_model_handle;
+
 ControlOptionsContext control_options_context;
+
+static goemon64::DrawDistance new_draw_distance; // pending value of the Graphics tab, applied by Apply
+static bool draw_distance_changed() { return new_draw_distance != control_options_context.draw_distance; }
+static void apply_draw_distance() { control_options_context.draw_distance = new_draw_distance; }
+static void reset_draw_distance() { new_draw_distance = control_options_context.draw_distance; }
 
 int recomp::get_rumble_strength() {
     return control_options_context.rumble_strength;
@@ -353,8 +375,9 @@ goemon64::DrawDistance goemon64::get_draw_distance() {
 
 void goemon64::set_draw_distance(goemon64::DrawDistance mode) {
     control_options_context.draw_distance = mode;
-    if (general_model_handle) {
-        general_model_handle.DirtyVariable("draw_distance");
+    new_draw_distance = mode;
+    if (graphics_model_handle) {
+        graphics_model_handle.DirtyVariable("draw_distance");
     }
 }
 
@@ -364,8 +387,8 @@ goemon64::UnlockCharacters goemon64::get_unlock_characters() {
 
 void goemon64::set_unlock_characters(goemon64::UnlockCharacters mode) {
     control_options_context.unlock_characters = mode;
-    if (general_model_handle) {
-        general_model_handle.DirtyVariable("unlock_characters");
+    if (enhanced_model_handle) {
+        enhanced_model_handle.DirtyVariable("unlock_characters");
     }
 }
 
@@ -375,8 +398,19 @@ goemon64::ReplayCastles goemon64::get_replay_castles() {
 
 void goemon64::set_replay_castles(goemon64::ReplayCastles mode) {
     control_options_context.replay_castles = mode;
-    if (general_model_handle) {
-        general_model_handle.DirtyVariable("replay_castles");
+    if (enhanced_model_handle) {
+        enhanced_model_handle.DirtyVariable("replay_castles");
+    }
+}
+
+goemon64::SaveAnywhere goemon64::get_save_anywhere() {
+    return control_options_context.save_anywhere;
+}
+
+void goemon64::set_save_anywhere(goemon64::SaveAnywhere mode) {
+    control_options_context.save_anywhere = mode;
+    if (enhanced_model_handle) {
+        enhanced_model_handle.DirtyVariable("save_anywhere");
     }
 }
 
@@ -687,6 +721,7 @@ public:
         bind_option(constructor, "hr_option", &new_options.hr_option);
         bind_option(constructor, "msaa_option", &new_options.msaa_option);
         bind_option(constructor, "rr_option", &new_options.rr_option);
+        bind_option(constructor, "draw_distance", &new_draw_distance); // GGA, moved from General; applied by Apply, saved in general.json
         constructor.BindFunc("rr_manual_value",
             [](Rml::Variant& out) {
                 out = new_options.rr_manual_value;
@@ -716,7 +751,7 @@ public:
 
         constructor.BindFunc("options_changed",
             [](Rml::Variant& out) {
-                out = (ultramodern::renderer::get_graphics_config() != new_options);
+                out = graphics_options_changed();
             });
         constructor.BindFunc("ds_info",
             [](Rml::Variant& out) {
@@ -1026,14 +1061,25 @@ public:
         bind_option(constructor, "camera_invert_mode", &control_options_context.camera_invert_mode);
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
-        bind_option(constructor, "draw_distance", &control_options_context.draw_distance);
-        bind_option(constructor, "unlock_characters", &control_options_context.unlock_characters);
-        bind_option(constructor, "replay_castles", &control_options_context.replay_castles);
         bind_option(constructor, "rt64_developer_mode", &control_options_context.rt64_developer_mode);
 
         general_model_handle = constructor.GetModelHandle();
     }
     
+    void make_enhanced_bindings(Rml::Context* context) {
+        Rml::DataModelConstructor constructor = context->CreateDataModel("enhanced_model");
+        if (!constructor) {
+            throw std::runtime_error("Failed to make RmlUi data model for the enhanced menu");
+        }
+
+        bind_config_list_events(constructor);
+        bind_option(constructor, "save_anywhere", &control_options_context.save_anywhere);
+        bind_option(constructor, "unlock_characters", &control_options_context.unlock_characters); // moved from General
+        bind_option(constructor, "replay_castles", &control_options_context.replay_castles); // moved from General
+
+        enhanced_model_handle = constructor.GetModelHandle();
+    }
+
     void make_sound_options_bindings(Rml::Context* context) {
         Rml::DataModelConstructor constructor = context->CreateDataModel("sound_options_model");
         if (!constructor) {
@@ -1087,6 +1133,7 @@ public:
         make_general_bindings(context);
         make_controls_bindings(context);
         make_graphics_bindings(context);
+        make_enhanced_bindings(context);
         make_sound_options_bindings(context);
         make_debug_bindings(context);
     }
@@ -1114,6 +1161,7 @@ void recompui::update_supported_options() {
     sample_positions_supported = goemon64::renderer::RT64SamplePositionsSupported();
     
     new_options = ultramodern::renderer::get_graphics_config();
+    reset_draw_distance();
 
     graphics_model_handle.DirtyAllVariables();
 }

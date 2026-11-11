@@ -244,6 +244,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["draw_distance"] = goemon64::get_draw_distance();
     config_json["unlock_characters"] = goemon64::get_unlock_characters();
     config_json["replay_castles"] = goemon64::get_replay_castles();
+    config_json["save_anywhere"] = goemon64::get_save_anywhere();
     config_json["rt64_developer_mode"] = goemon64::get_rt64_developer_mode();
     config_json["debug_mode"] = goemon64::get_debug_mode_enabled();
 
@@ -264,6 +265,7 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_draw_distance(from_or_default(config_json, "draw_distance", goemon64::DrawDistance::Original));
     goemon64::set_unlock_characters(from_or_default(config_json, "unlock_characters", goemon64::UnlockCharacters::Off));
     goemon64::set_replay_castles(from_or_default(config_json, "replay_castles", goemon64::ReplayCastles::Off));
+    goemon64::set_save_anywhere(from_or_default(config_json, "save_anywhere", goemon64::SaveAnywhere::On));
     goemon64::set_rt64_developer_mode(from_or_default(config_json, "rt64_developer_mode", goemon64::Rt64DeveloperMode::Off));
     goemon64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }

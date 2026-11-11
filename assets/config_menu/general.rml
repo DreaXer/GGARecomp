@@ -56,7 +56,7 @@
                                 data-checked="background_input_mode"
                                 value="On"
                                 id="bg_input_enabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #draw_distance_original"
+                                style="nav-up: #joystick_deadzone_input"
                             />
                             <label class="config-option__tab-label" for="bg_input_enabled">On</label>
 
@@ -68,104 +68,16 @@
                                 data-checked="background_input_mode"
                                 value="Off"
                                 id="bg_input_disabled"
-                                style="nav-up: #joystick_deadzone_input; nav-down: #draw_distance_x2"
+                                style="nav-up: #joystick_deadzone_input"
                             />
                             <label class="config-option__tab-label" for="bg_input_disabled">Off</label>
                         </div>
                     </div>
 
-                    <!-- draw distance (GGA) -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(6)" id="conf-general__Draw-Distance">
-                        <label class="config-option__title">Draw Distance</label>
-                        <div class="config-option__list">
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
-                                name="draw_distance"
-                                data-checked="draw_distance"
-                                value="Original"
-                                id="draw_distance_original"
-                                style="nav-up: #bg_input_enabled; nav-down: #unlock_characters_off"
-                            />
-                            <label class="config-option__tab-label" for="draw_distance_original">Original</label>
-
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(6)"
-                                name="draw_distance"
-                                data-checked="draw_distance"
-                                value="x2"
-                                id="draw_distance_x2"
-                                style="nav-up: #bg_input_disabled; nav-down: #unlock_characters_on"
-                            />
-                            <label class="config-option__tab-label" for="draw_distance_x2">x2</label>
-                        </div>
-                    </div>
-
-                    <!-- unlock characters (GGA) -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)" id="conf-general__Unlock-Characters">
-                        <label class="config-option__title">Unlock Sasuke and Yae</label>
-                        <div class="config-option__list">
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
-                                name="unlock_characters"
-                                data-checked="unlock_characters"
-                                value="Off"
-                                id="unlock_characters_off"
-                                style="nav-up: #draw_distance_original; nav-down: #replay_castles_off"
-                            />
-                            <label class="config-option__tab-label" for="unlock_characters_off">Off</label>
-
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(7)"
-                                name="unlock_characters"
-                                data-checked="unlock_characters"
-                                value="On"
-                                id="unlock_characters_on"
-                                style="nav-up: #draw_distance_x2; nav-down: #replay_castles_on"
-                            />
-                            <label class="config-option__tab-label" for="unlock_characters_on">On</label>
-                        </div>
-                    </div>
-
-                    <!-- replay castles (GGA) -->
-                    <div class="config-option" data-event-mouseover="set_cur_config_index(10)" id="conf-general__Replay-Castles">
-                        <label class="config-option__title">Replay Castles</label>
-                        <div class="config-option__list">
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
-                                name="replay_castles"
-                                data-checked="replay_castles"
-                                value="Off"
-                                id="replay_castles_off"
-                                style="nav-up: #unlock_characters_off"
-                            />
-                            <label class="config-option__tab-label" for="replay_castles_off">Off</label>
-
-                            <input
-                                type="radio"
-                                data-event-blur="set_cur_config_index(-1)"
-                                data-event-focus="set_cur_config_index(10)"
-                                name="replay_castles"
-                                data-checked="replay_castles"
-                                value="On"
-                                id="replay_castles_on"
-                                style="nav-up: #unlock_characters_on"
-                            />
-                            <label class="config-option__tab-label" for="replay_castles_on">On</label>
-                        </div>
-                    </div>
+                    <!-- draw distance (GGA): moved to the Graphics tab, replay castles: moved to the Enhanced tab (2026-11-11) -->
 
                     <!-- RT64 developer mode (GGA): hidden from players (2026-11-03); to show it again, remove this comment's
-                         start and end, and put back nav-down: #rt64_developer_mode_off / _on on the replay_castles inputs.
+                         start and end, and put back nav-down: #rt64_developer_mode_off / _on on the background_input_mode inputs.
                     <div class="config-option" data-event-mouseover="set_cur_config_index(11)" id="conf-general__Rt64-Developer-Mode">
                         <label class="config-option__title">RT64 Developer Mode</label>
                         <div class="config-option__list">
@@ -177,7 +89,7 @@
                                 data-checked="rt64_developer_mode"
                                 value="Off"
                                 id="rt64_developer_mode_off"
-                                style="nav-up: #replay_castles_off"
+                                style="nav-up: #bg_input_enabled"
                             />
                             <label class="config-option__tab-label" for="rt64_developer_mode_off">Off</label>
 
@@ -189,7 +101,7 @@
                                 data-checked="rt64_developer_mode"
                                 value="On"
                                 id="rt64_developer_mode_on"
-                                style="nav-up: #replay_castles_on"
+                                style="nav-up: #bg_input_disabled"
                             />
                             <label class="config-option__tab-label" for="rt64_developer_mode_on">On</label>
                         </div>
@@ -223,21 +135,6 @@
                         Allows the game to read controller input when out of focus.
                         <br/>
                         <b>This setting does not affect keyboard input.</b>
-                    </p>
-                    <p data-if="cur_config_index == 6">
-                        Draws more scenery at the sides of the screen. <b>Original</b> matches the original game (widened to the sides in widescreen).
-                        <br/>
-                        <br/>
-                        <b>x2</b> doubles the width checked at the sides. The distance ahead and the fog stay the original ones.
-                    </p>
-                    <p data-if="cur_config_index == 7">
-                        Makes Sasuke and Yae playable from the start, like the original cheat code. Applied when the character select screen opens, and kept in the save.
-                        <br/>
-                        <br/>
-                        With fewer unlocked characters than players, only as many players as characters take part; the others can join later with <b>START</b> once a character is free.
-                    </p>
-                    <p data-if="cur_config_index == 10">
-                        Lets you enter a castle again from the world map once it has been beaten (shown in ruins). The whole castle is played again, boss included.
                     </p>
                     <p data-if="cur_config_index == 11">
                         Enables RT64's developer tools: <b>F1</b> opens the inspector (right-click on the picture lists the draw calls under the cursor).

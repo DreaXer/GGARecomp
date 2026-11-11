@@ -101,6 +101,11 @@ extern "C" int ga_unlock_characters(void) {
     return goemon64::get_unlock_characters() == goemon64::UnlockCharacters::On;
 }
 
+// Save Anywhere option (Enhanced menu), read by the world map hooks (ga_hud.c: ga_map_save, ga_map_hdr_create).
+extern "C" int ga_save_anywhere(void) {
+    return goemon64::get_save_anywhere() == goemon64::SaveAnywhere::On;
+}
+
 // Replay castles option (General menu), read by the world map hook in ga.toml (func_08003DC0).
 extern "C" int ga_replay_castles(void) {
     return goemon64::get_replay_castles() == goemon64::ReplayCastles::On;

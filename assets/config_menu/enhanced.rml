@@ -1,0 +1,119 @@
+<template name="config-menu__enhanced">
+    <head>
+    </head>
+    <body>
+        <form class="config__form">
+            <div class="config__hz-wrapper">
+                <!-- Options -->
+                <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)">
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(0)" id="conf-enhanced__Save-Anywhere">
+                        <label class="config-option__title">Save Anywhere</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="save_anywhere"
+                                data-checked="save_anywhere"
+                                value="Off"
+                                id="save_anywhere_off"
+                                style="nav-up: #tab_enhanced; nav-down: #unlock_characters_off"
+                            />
+                            <label class="config-option__tab-label" for="save_anywhere_off">Off</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(0)"
+                                name="save_anywhere"
+                                data-checked="save_anywhere"
+                                value="On"
+                                id="save_anywhere_on"
+                                style="nav-up: #tab_enhanced; nav-down: #unlock_characters_on"
+                            />
+                            <label class="config-option__tab-label" for="save_anywhere_on">On</label>
+                        </div>
+                    </div>
+
+                    <!-- unlock characters (GGA, moved from the General tab 2026-11-11) -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(1)" id="conf-enhanced__Unlock-Characters">
+                        <label class="config-option__title">Unlock Sasuke and Yae</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                name="unlock_characters"
+                                data-checked="unlock_characters"
+                                value="Off"
+                                id="unlock_characters_off"
+                                style="nav-up: #save_anywhere_off; nav-down: #replay_castles_off"
+                            />
+                            <label class="config-option__tab-label" for="unlock_characters_off">Off</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(1)"
+                                name="unlock_characters"
+                                data-checked="unlock_characters"
+                                value="On"
+                                id="unlock_characters_on"
+                                style="nav-up: #save_anywhere_on; nav-down: #replay_castles_on"
+                            />
+                            <label class="config-option__tab-label" for="unlock_characters_on">On</label>
+                        </div>
+                    </div>
+
+                    <!-- replay castles (GGA, moved from the General tab 2026-11-11) -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(2)" id="conf-enhanced__Replay-Castles">
+                        <label class="config-option__title">Replay Castles</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                name="replay_castles"
+                                data-checked="replay_castles"
+                                value="Off"
+                                id="replay_castles_off"
+                                style="nav-up: #unlock_characters_off"
+                            />
+                            <label class="config-option__tab-label" for="replay_castles_off">Off</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(2)"
+                                name="replay_castles"
+                                data-checked="replay_castles"
+                                value="On"
+                                id="replay_castles_on"
+                                style="nav-up: #unlock_characters_on"
+                            />
+                            <label class="config-option__tab-label" for="replay_castles_on">On</label>
+                        </div>
+                    </div>
+                </div>
+                <!-- Descriptions -->
+                <div class="config__wrapper">
+                    <p data-if="cur_config_index == 0">
+                        Press <b>START</b> on the world map to save your journal, wherever you are. Loading it brings you back to the same place on the map. Shown in the map's header with a red button.
+                        <br/>
+                        <br/>
+                        <b>START still pauses the game in stages.</b>
+                    </p>
+                    <p data-if="cur_config_index == 1">
+                        Makes Sasuke and Yae playable from the start, like the original cheat code. Applied when the character select screen opens, and kept in the save.
+                        <br/>
+                        <br/>
+                        With fewer unlocked characters than players, only as many players as characters take part; the others can join later with <b>START</b> once a character is free.
+                    </p>
+                    <p data-if="cur_config_index == 2">
+                        Lets you enter a castle again from the world map once it has been beaten (shown in ruins). The whole castle is played again, boss included.
+                    </p>
+                </div>
+            </div>
+        </form>
+    </body>
+</template>

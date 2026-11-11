@@ -199,7 +199,7 @@
                                 data-checked="msaa_option"
                                 value="None"
                                 id="msaa_none"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_original' : 'nav-up: #rr_original; nav-down: #hr_original'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #draw_distance_original' : 'nav-up: #rr_original; nav-down: #draw_distance_original'"
                             />
                             <label class="config-option__tab-label" for="msaa_none">None</label>
                             <input type="radio"
@@ -210,7 +210,7 @@
                                 data-checked="msaa_option"
                                 value="MSAA2X"
                                 id="msaa_2x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_16_9' : 'nav-up: #rr_display; nav-down: #hr_16_9'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #draw_distance_x2' : 'nav-up: #rr_display; nav-down: #draw_distance_x2'"
                                 data-style-nav-right="msaa4x_supported ? '#msaa_4x' : 'none'"
                             />
                             <label class="config-option__tab-label" for="msaa_2x">2x</label>
@@ -222,10 +222,40 @@
                                 data-checked="msaa_option"
                                 value="MSAA4X"
                                 id="msaa_4x"
-                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #hr_full' : 'nav-up: #rr_manual; nav-down: #hr_full'"
+                                data-attr-style="rr_option=='Manual' ? 'nav-up: #rr_manual_input; nav-down: #draw_distance_x2' : 'nav-up: #rr_manual; nav-down: #draw_distance_x2'"
                             />
                             <label class="config-option__tab-label" for="msaa_4x">4x</label>
                             <div class="config-option__details" data-if="!sample_positions_supported">Not available (missing sample positions support)</div>
+                        </div>
+                    </div>
+
+                    <!-- draw distance (GGA, moved from the General tab 2026-11-11; applied by Apply like the other options) -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(7)" id="conf-graphics__Draw-Distance">
+                        <label class="config-option__title">Draw Distance</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="draw_distance"
+                                data-checked="draw_distance"
+                                value="Original"
+                                id="draw_distance_original"
+                                style="nav-up: #msaa_none; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="draw_distance_original">Original</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(7)"
+                                name="draw_distance"
+                                data-checked="draw_distance"
+                                value="x2"
+                                id="draw_distance_x2"
+                                style="nav-up: #msaa_2x; nav-down: #apply_button"
+                            />
+                            <label class="config-option__tab-label" for="draw_distance_x2">x2</label>
                         </div>
                     </div>
                 </div>
@@ -263,6 +293,12 @@
                     <p data-if="cur_config_index == 6">
                         Adjusts the placement of HUD elements to fit the selected aspect ratio. <b>Expand</b> will use the aspect ratio of the game's output window.
                     </p>
+                    <p data-if="cur_config_index == 7">
+                        Draws more scenery at the sides of the screen. <b>Original</b> matches the original game (widened to the sides in widescreen).
+                        <br/>
+                        <br/>
+                        <b>x2</b> doubles the width checked at the sides. The distance ahead and the fog stay the original ones.
+                    </p>
                 </div>
             </div>
             <div class="config__footer">
@@ -275,7 +311,7 @@
                         data-attrif-disabled="!options_changed"
                         onclick="apply_options"
                         id="apply_button"
-                        style="nav-up:#hr_original"
+                        style="nav-up:#draw_distance_original"
                     >
                         <div class="button__label">Apply<span class="prompt-font-sm">{{gfx_help__apply}}</span></div>
                     </button>

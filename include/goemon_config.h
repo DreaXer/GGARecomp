@@ -133,6 +133,21 @@ namespace goemon64 {
     ReplayCastles get_replay_castles();
     void set_replay_castles(ReplayCastles mode);
 
+    // GGA: START on the world map saves (Enhanced tab; src/game/ga_hud.c ga_map_save, map header's 3rd line).
+    enum class SaveAnywhere {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::SaveAnywhere, {
+        {goemon64::SaveAnywhere::Off, "Off"},
+        {goemon64::SaveAnywhere::On, "On"}
+    });
+
+    SaveAnywhere get_save_anywhere();
+    void set_save_anywhere(SaveAnywhere mode);
+
     // GGA: RT64 developer mode (F1 = inspector), read when the renderer is created (src/main/rt64_render_context.cpp).
     enum class Rt64DeveloperMode {
         Off,
