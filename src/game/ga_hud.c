@@ -830,6 +830,202 @@ void ga_map_voice(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+/*
+ * World map, save anywhere (user's idea, 2026-11-11): START (does nothing on the map; pauses in stages, and this hook only
+ * runs on the map) saves like the game's own save after the castle robot. func_08003DC0 = idle update of the map (A / B per
+ * present player, read with func_800D8CF8(port, mask) == 1 = pressed now). func_800CFC64(0x80088208, slot) (file 6) = the
+ * game's save of a slot (copies 0x130 bytes, tops up lives / coins in the copy, writes the Controller Pak), called with the
+ * slot of the loaded game D_80088348 by the script command func_800EDFFC. That command is in script 0x51 (game file 333,
+ * "Do you wish to record your journal thus far?", yes / no, then the save and its messages, Controller Pak errors included).
+ * The map itself starts it on arrival after a world change (func_08003C40, frame 8: slot D_80088348 in 0..2 ->
+ * func_800E78E8(0x51, 0, 0), then state + 0x18 = func_08003D78, which waits for the script (func_800E7A0C) and goes back
+ * to func_08003DC0). START does the same (hook at the entry of func_08003DC0, $a1 = map state; returns 1 = skip the rest
+ * of this frame). 0x80088210 = D_80088346 + 7 as the game (resume place, supposed: world map of the current world).
+ */
+void func_800E78E8_5A2B08(uint8_t* rdram, recomp_context* ctx); /* (script id, 0, 0) */
+
+/*
+ * Resume code 0x80088210 (in the save): loading a game (func_08008470, title module) reads it (lbu at 0x08008518, 0..0x10,
+ * jump table) and sets fixed (world D_80088346, place D_80088347): villages / inns, or 7 + world = world map at place 0;
+ * the map then opens at place D_80088347. Our map save writes RESUME_MAP + world * 16 + place (0x20..0x6F, unused by the
+ * game); ga_resume_read (before 0x08008518) puts 7 + world back for the game's table and keeps the place, ga_resume_place
+ * (before 0x080086F8, after the table) sets D_80088347 to it.
+ */
+#define RESUME_MAP 0x20
+static int resume_place = -1;
+void ga_resume_read(uint8_t* rdram) {
+    const uint8_t b = rb(rdram, 0x80088210u);
+    resume_place = -1;
+    if (b >= RESUME_MAP && b < RESUME_MAP + 5 * 16) {
+        resume_place = (b - RESUME_MAP) & 15;
+        wb(rdram, 0x80088210u, (uint8_t)(7 + (b - RESUME_MAP) / 16));
+    }
+}
+void ga_resume_place(uint8_t* rdram) {
+    if (resume_place >= 0) {
+        wb(rdram, 0x80088347u, (uint8_t)resume_place);
+        resume_place = -1;
+    }
+}
+
+/*
+ * Journal screen: func_08001794(obj, x bits, y bits, code) (title module) stores x / y floats at obj + 0x14 / + 0x18 and the
+ * name of resume code 1..11 at obj + 0x28 ("Lost'n Town:INN" .. "Home of Wiseman:Front", "Edo:Complete" ..), else none.
+ * Hook at its entry: our code -> the map place's name (strings of the map, game file 333 + 0x10, in world order; the
+ * place index matches for the inns (0,2) (1,2) (2,3) (3,3); world 4 order supposed), written at MAP_SAVE_NAMES.
+ */
+#define MAP_SAVE_NAMES 0x80D10200u /* 80 x 48 bytes, after the header's strings / dot (MAP_SAVE_RAM 0x80D10000) */
+/* "World:Place" as the game's "Edo:Complete"; no world name in the game for world 4 (user's choice: Floating World) */
+static const char* const world_name[5] = { "Edo", "Ryugu", "Mafu Island", "Underworld", "Floating World" };
+static const char* const place_name[5][8] = {
+    { "Home of the Wiseman", "Lost'n Road", "Lost'n Town", "Digadig Gold Mine", "Ringbell Pass", "Edo Checkpoint",
+      "Edo Castle", 0 },
+    { "Kappa Road", "Frog Mountain", "Otohime Town", "Naruto Road", "Ryugu Checkpoint", "Ryugu Castle", 0, 0 },
+    { "Kokeshi Road", "Maneater Pass", "Tomb Pass", "Spook Village", "Pochan Lake", "Mafu Checkpoint", "Majin Castle", 0 },
+    { "Kaiware Road", "Mokeke Forest", "Wonder Valley", "Tree Stump Village", "Underworld Checkpoint", "Underworld Castle",
+      0, 0 },
+    { "Creep Village", "Cloud Fortress", "Sky Garden", "Wind Castle Wall", "Floating World Town", "Floating Checkpoint",
+      "Dream Castle", 0 },
+};
+int ga_journal_name(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t obj = (uint32_t)ctx->r4, code = (uint32_t)ctx->r7;
+    const char* n;
+    char buf[48];
+    uint32_t s, i = 0;
+    if (code < RESUME_MAP || code >= RESUME_MAP + 5 * 16 || (code & 15) >= 8 ||
+        (n = place_name[(code - RESUME_MAP) / 16][code & 15]) == 0) {
+        return 0;
+    }
+    snprintf(buf, sizeof buf, "%s:%s", world_name[(code - RESUME_MAP) / 16], n);
+    s = MAP_SAVE_NAMES + 48u * (code - RESUME_MAP);
+    do {
+        wb(rdram, s + i, (uint8_t)buf[i]);
+    } while (buf[i++] != '\0');
+    ww(rdram, obj + 0x14, (uint32_t)ctx->r5);
+    ww(rdram, obj + 0x18, (uint32_t)ctx->r6);
+    ww(rdram, obj + 0x28, s);
+    return 1;
+}
+
+int ga_map_save(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t st = (uint32_t)ctx->r5;
+    const int slot = (int8_t)rb(rdram, 0x80088348u);
+    int p;
+    int ga_save_anywhere(void); /* option "Save Anywhere" (Enhanced menu), src/game/ga_widescreen.cpp */
+    if (!ga_save_anywhere() || slot < 0 || slot > 2) { /* no slot (as the game: no save prompt) */
+        return 0;
+    }
+    for (p = 0; p < 4; p++) {
+        if (rw(rdram, PLAYER_OBJ(p)) != 0 && callf(rdram, ctx, func_800D8CF8_593F18, p, 0x1000) == 1) {
+            fprintf(stderr, "[GGA SAVE] map save, slot %d, 0x80088210 = %d, D_80088346 = %d, D_80088347 = %d\n", slot,
+                    (int8_t)rb(rdram, 0x80088210u), (int8_t)rb(rdram, 0x80088346u), (int8_t)rb(rdram, 0x80088347u));
+            /* resume code (as func_08003C40 before the script: 7 + world = world map, at place 0; without it the save kept
+               the previous one, 3 = Spook village, user's test 2026-11-11), here with the place: see ga_resume_* */
+            const int world = (int8_t)rb(rdram, 0x80088346u), place = (int32_t)rw(rdram, 0x08007E50u); /* D_08007E50 */
+            wb(rdram, 0x80088210u, (uint8_t)(world >= 0 && world <= 4 && place >= 0 && place <= 15
+                                                 ? RESUME_MAP + world * 16 + place : world + 7));
+            call(rdram, ctx, func_800E78E8_5A2B08, 0x51, 0, 0, 0, 0);
+            MEM_H(0x26, (int32_t)st) = 0;
+            ww(rdram, st + 0x18, 0x08003D78u); /* func_08003D78: wait for the script */
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * World map header (top right, "Move / Enter stage", func_0800159C, read 2026-11-11): state $s2 = object + 0x20: +0 node,
+ * +4 / +8 texts of lines 1 / 2, +0xC x, +0x10 y, +0x14 width, +0x18 height 0x19. Lines 11 px apart (text y + 2 / + 13),
+ * dots = 10 x 10 pieces of a 20 x 10 RGBA16 texture (0x03003F80, resource 0x113: green s 0, blue s 10), copy-mode rects.
+ * Third line "Save" with a red dot (user's choice: START is red on the N64 pad): its text created with the other two
+ * (hook before 0x080016CC), placed and the frame made 11 px taller (before 0x08001778), freed (message 1, before
+ * 0x08001780), its dot drawn before the end of the header's display list (before 0x08001BCC, $s1 = &gfx). The red dot =
+ * the game's green dot with red and green swapped, written in free RDRAM (MAP_SAVE_RAM, after the object pool 0x80D00000).
+ * shortcut: the frame's width stays the one of line 2 (longer than "Save" in EN / FR / DE), recompute if a label grows.
+ */
+void func_800EB828_5A6A48(uint8_t* rdram, recomp_context* ctx); /* (node, x, y, string) -> text object */
+void func_800EAF20_5A6140(uint8_t* rdram, recomp_context* ctx); /* (text, 8, 10, 1, [sp + 0x10] 0) */
+void func_800EB8E8_5A6B08(uint8_t* rdram, recomp_context* ctx); /* (text): frees it */
+void func_800CDF44_589164(uint8_t* rdram, recomp_context* ctx); /* (segmented address, resource, 0) -> address */
+#define MAP_SAVE_RAM  0x80D10000u            /* strings (3 x 16 bytes) */
+#define MAP_SAVE_TEX  (MAP_SAVE_RAM + 0x40u) /* 20 x 10 RGBA16 = 400 bytes */
+#define MAP_LINE      11
+static const char* const map_save_label[3] = { "Save", "Sauvegarder", "Speichern" }; /* language byte 0x80088200 */
+static uint32_t map_hdr_state, map_hdr_text;
+
+void ga_map_hdr_create(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t st = (uint32_t)ctx->r18;
+    uint32_t i, lang = rb(rdram, 0x80088200u), s;
+    const char* l;
+    int ga_save_anywhere(void);
+    if (ctx->r2 == 0 || !ga_save_anywhere()) { /* line 2 failed: the game gives up; option Off: header as the game's */
+        return;
+    }
+    if (lang > 2) {
+        lang = 0;
+    }
+    s = MAP_SAVE_RAM + 16u * lang;
+    l = map_save_label[lang];
+    i = 0;
+    do {
+        wb(rdram, s + i, (uint8_t)l[i]);
+    } while (l[i++] != '\0');
+    map_hdr_state = st;
+    map_hdr_text = call(rdram, ctx, func_800EB828_5A6A48, rw(rdram, st), (int32_t)rw(rdram, st + 0xC) + 15,
+                        (int32_t)rw(rdram, st + 0x10) + 2 + 2 * MAP_LINE, (int32_t)s, 0);
+    if (map_hdr_text != 0) {
+        call(rdram, ctx, func_800EAF20_5A6140, map_hdr_text, 8, 10, 1, 0);
+    }
+}
+
+void ga_map_hdr_layout(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t st = (uint32_t)ctx->r18;
+    if (st != map_hdr_state || map_hdr_text == 0) {
+        return;
+    }
+    ww(rdram, map_hdr_text + 0x14, (uint32_t)fbits((float)((int32_t)rw(rdram, st + 0xC) + 16))); /* as lines 1 / 2 */
+    ww(rdram, st + 0x18, rw(rdram, st + 0x18) + MAP_LINE);
+}
+
+void ga_map_hdr_free(uint8_t* rdram, recomp_context* ctx) {
+    if ((uint32_t)ctx->r18 != map_hdr_state) {
+        return;
+    }
+    if (map_hdr_text != 0) {
+        callf(rdram, ctx, func_800EB8E8_5A6B08, (int32_t)map_hdr_text, 0);
+    }
+    map_hdr_state = map_hdr_text = 0;
+}
+
+void ga_map_hdr_draw(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t st = (uint32_t)ctx->r18, gp = (uint32_t)ctx->r17;
+    const uint32_t x = rw(rdram, st + 0xC), y = rw(rdram, st + 0x10) + 2 + 2 * MAP_LINE;
+    uint32_t g = rw(rdram, gp), src, i;
+    if (st != map_hdr_state || map_hdr_text == 0) {
+        return;
+    }
+    src = call(rdram, ctx, func_800CDF44_589164, 0x03003F80u, 0x113, 0, 0, 0);
+    for (i = 0; i < 20 * 10; i++) { /* green dot (s 0..9) -> red, both halves */
+        const uint16_t c = (uint16_t)MEM_HU(0, (int32_t)(src + 2u * (i / 20u * 20u + i % 10u)));
+        const uint16_t r = (uint16_t)((c & 0x003F) | ((c >> 6) & 0x1F) << 11 | ((c >> 11) & 0x1F) << 6); /* RGBA5551 */
+        MEM_H(0, (int32_t)(MAP_SAVE_TEX + 2u * i)) = (int16_t)r;
+    }
+    /* same texture load as the game's (64C7F0.s), our address */
+    g = put(rdram, g, 0xE7000000, 0);
+    g = put(rdram, g, 0xFD100000, MAP_SAVE_TEX);
+    g = put(rdram, g, 0xF5100000, 0x07080200);
+    g = put(rdram, g, 0xE6000000, 0);
+    g = put(rdram, g, 0xF3000000, 0x070C719A);
+    g = put(rdram, g, 0xE7000000, 0);
+    g = put(rdram, g, 0xF5100A00, 0x00080200);
+    g = put(rdram, g, 0xF2000000, 0x0004C024);
+    g = put(rdram, g, 0xE4000000 | ((x + 11) * 4 & 0xFFF) << 12 | ((y + 9) * 4 & 0xFFF),
+            ((x + 2) * 4 & 0xFFF) << 12 | (y * 4 & 0xFFF));
+    g = put(rdram, g, 0xE1000000, 0);
+    g = put(rdram, g, 0xF1000000, 0x10000400);
+    ww(rdram, gp, g);
+}
+
 /* Button handler func_08007560 (before 0x08007C20, after its update, [sp + 0x68] = object, [sp + 0x6E] = message): an
  * option without enough controllers gets a grey label. */
 void ga_menu_gray(uint8_t* rdram, recomp_context* ctx) {

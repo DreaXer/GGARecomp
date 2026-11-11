@@ -431,6 +431,57 @@ func = "func_08003DC0_6505B0"
 text = "{ int ga_replay_castles(void); if (ga_replay_castles()) ctx->r9 &= ~0x4ULL; }"
 before_vram = 0x08003E5C
 
+# Meme fonction (attente sur la carte) : START = sauvegarde n'importe ou (ga_map_save, ga_hud.c) : lance le script 0x51
+# (question « enregistrer le journal ? » + sauvegarde), comme la carte apres un changement de monde (func_08003C40), et
+# passe a l'attente du script func_08003D78. START ne fait rien sur la carte d'origine (utilisateur, 2026-11-11).
+[[patches.hook]]
+func = "func_08003DC0_6505B0"
+text = "{ int ga_map_save(uint8_t*, recomp_context*); if (ga_map_save(rdram, ctx)) { ctx->r2 = 0; return; } }"
+before_vram = 0x08003DC0
+
+# Chargement d'une partie (func_08008470, module titre) : code de reprise 0x80088210 (0..0x10, table de saut -> monde /
+# lieu fixes). Code de la sauvegarde START de la carte 0x20 + monde * 16 + lieu : ga_resume_read le remet a 7 + monde
+# (carte du monde, lieu 0) et garde le lieu ; ga_resume_place met D_80088347 = lieu apres la table.
+[[patches.hook]]
+func = "func_08008470_667310"
+text = "{ void ga_resume_read(uint8_t*); ga_resume_read(rdram); }"
+before_vram = 0x08008518
+
+[[patches.hook]]
+func = "func_08008470_667310"
+text = "{ void ga_resume_place(uint8_t*); ga_resume_place(rdram); }"
+before_vram = 0x080086F8
+
+# Ecran des journaux : func_08001794(obj, x, y, code) donne le nom du code de reprise 1..11 ; code de la sauvegarde START
+# -> nom du lieu de la carte (ga_journal_name, ga_hud.c), x / y ranges a sa place, puis retour.
+[[patches.hook]]
+func = "func_08001794_660634"
+text = "{ int ga_journal_name(uint8_t*, recomp_context*); if (ga_journal_name(rdram, ctx)) return; }"
+before_vram = 0x08001794
+
+# En-tete de la carte (func_0800159C, « Deplacer / Etape d'entree ») : 3e ligne « Save » + pastille rouge (ga_hud.c,
+# ga_map_hdr_*) : creation avec les 2 autres textes, placement + cadre plus haut, liberation (message 1), dessin de la
+# pastille avant la fin de la liste d'affichage ($s1 = &gfx).
+[[patches.hook]]
+func = "func_0800159C_64DD8C"
+text = "{ void ga_map_hdr_create(uint8_t*, recomp_context*); ga_map_hdr_create(rdram, ctx); }"
+before_vram = 0x080016CC
+
+[[patches.hook]]
+func = "func_0800159C_64DD8C"
+text = "{ void ga_map_hdr_layout(uint8_t*, recomp_context*); ga_map_hdr_layout(rdram, ctx); }"
+before_vram = 0x08001778
+
+[[patches.hook]]
+func = "func_0800159C_64DD8C"
+text = "{ void ga_map_hdr_free(uint8_t*, recomp_context*); ga_map_hdr_free(rdram, ctx); }"
+before_vram = 0x08001780
+
+[[patches.hook]]
+func = "func_0800159C_64DD8C"
+text = "{ void ga_map_hdr_draw(uint8_t*, recomp_context*); ga_map_hdr_draw(rdram, ctx); }"
+before_vram = 0x08001BCC
+
 # Entree dans le lieu (func_08004418, image 0x2D) : si lieu = chateau du monde ($v0 = monde, $v1 = lieu, table D_08007190
 # + 0x28C * monde + 0x270) et D_80088311[monde] ($t3) > 0 -> func_800DB288 (combat de robot direct, teste 2026-10-25), sinon
 # niveau normal (func_800DAB70). Option « Replay Castles » et chateau en ruine (bit 0x04) : $t3 = 0 -> chateau entier.
