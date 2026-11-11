@@ -13,7 +13,7 @@ game, with enhancements such as high framerates, widescreen and up to 4 players.
 
 ### **This repository and its releases do not contain game assets. You need your own copy of the original game to play or build this project.**
 
-> **Version 0.2.0 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
+> **Version 0.2.1 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
 > to finish. World 4 has not been tested yet: expect problems there, and keep a backup of your saves.
 
 ## Supported ROM
@@ -59,7 +59,7 @@ If the game crashes on startup, update your graphics drivers first.
 
 ## How to play
 
-1. Download `GGARecompiled-v0.2.0-windows.zip` (or `GGARecompiled-v0.2.0-linux.tar.gz`) from the
+1. Download `GGARecompiled-v0.2.1-windows.zip` (or `GGARecompiled-v0.2.1-linux.tar.gz`) from the
    [releases](https://github.com/DreaXer/GGARecomp/releases) and extract it anywhere.
 2. Run `GGARecompiled.exe`. On Linux, open a terminal **in the extracted folder** and run `./GGARecompiled` (started
    from another folder, the game does not find its `assets` folder).
@@ -99,7 +99,7 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
 
 Open an [issue](https://github.com/DreaXer/GGARecomp/issues) with:
 
-- the version (for example 0.2.0) and your Windows version or Linux distribution;
+- the version (for example 0.2.1) and your Windows version or Linux distribution;
 - where it happened (world, level, area), how many players, and what you did just before;
 - what happened (freeze, crash, black textures, wrong sound…), with a screenshot if possible;
 - your graphics settings (Framerate, Aspect Ratio);
