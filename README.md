@@ -63,7 +63,7 @@ If the game crashes on startup, update your graphics drivers first.
 
 ## How to play
 
-1. Download `GGARecompiled-v0.3.0-windows.zip` (or `GGARecompiled-v0.3.0-linux.tar.gz`) from the
+1. Download `GGARecompiled-v0.3.0-windows.zip` (or `GGARecompiled-v0.3.0-linux-x86_64.tar.gz`) from the
    [releases](https://github.com/DreaXer/GGARecomp/releases) and extract it anywhere.
 2. Run `GGARecompiled.exe`. On Linux, open a terminal **in the extracted folder** and run `./GGARecompiled` (started
    from another folder, the game does not find its `assets` folder).
