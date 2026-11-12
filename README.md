@@ -77,6 +77,9 @@ If the game crashes on startup, update your graphics drivers first.
 Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGARecompiled\` (Linux:
 `~/.config/GGARecompiled/`).
 
+On Linux, to get the game in your applications menu with its icon, run once in the extracted folder:
+`sh install-desktop-entry.sh` (run it again if you move the folder).
+
 ## Features
 
 - **High framerate**: RT64 draws extra frames between the game's own, up to your monitor's refresh rate
