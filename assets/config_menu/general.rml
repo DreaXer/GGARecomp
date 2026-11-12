@@ -6,6 +6,37 @@
             <div class="config__hz-wrapper" id="conf-general__hz-wrapper">
                 <!-- Options -->
                 <div class="config__wrapper" data-event-mouseout="set_cur_config_index(-1)" id="conf-general__wrapper">
+                    <!-- use european version (GGA, 2026-11-12): launcher logo + goemon2.eu.z64 read at boot -->
+                    <div class="config-option" data-event-mouseover="set_cur_config_index(12)" id="conf-general__Use-European-Version">
+                        <label class="config-option__title">Use European Version</label>
+                        <div class="config-option__list">
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="use_european_version"
+                                data-checked="use_european_version"
+                                value="Off"
+                                id="use_european_version_off"
+                                style="nav-up: #tab_general; nav-down: #rumble_strength_input; nav-right: #select_eu_rom_button"
+                            />
+                            <label class="config-option__tab-label" for="use_european_version_off">Off</label>
+
+                            <input
+                                type="radio"
+                                data-event-blur="set_cur_config_index(-1)"
+                                data-event-focus="set_cur_config_index(12)"
+                                name="use_european_version"
+                                data-checked="use_european_version"
+                                value="On"
+                                id="use_european_version_on"
+                                data-attrif-disabled="!eu_rom_present"
+                                style="nav-up: #tab_general; nav-down: #rumble_strength_input"
+                            />
+                            <label class="config-option__tab-label" for="use_european_version_on">On</label>
+                        </div>
+                    </div>
+
                     <!-- rumble strength -->
                     <div class="config-option" data-event-mouseover="set_cur_config_index(1)">
                         <label class="config-option__title">Rumble Strength</label>
@@ -19,7 +50,7 @@
                                 type="range"
                                 min="0"
                                 max="100"
-                                style="flex: 1; margin: 0dp;"
+                                style="flex: 1; margin: 0dp; nav-up: #use_european_version_off"
                                 data-value="rumble_strength"
                             />
                         </div>
@@ -136,6 +167,26 @@
                         <br/>
                         <b>This setting does not affect keyboard input.</b>
                     </p>
+                    <!-- kept while the cursor goes from the option to the button (last_config_index, ui_config.cpp) -->
+                    <div data-if="cur_config_index == 12 || (cur_config_index == -1 && last_config_index == 12)">
+                        <p>
+                            Uses the European version of the game: the launcher shows the <b>Mystical Ninja 2 Starring Goemon</b> logo, and the game uses the European ROM (French and German texts, <b>Option</b> menu on the title screen).
+                            <br/>
+                            <!-- one line: the descriptions keep line breaks (white-space: pre-line) --><br/><b data-if="!eu_rom_present" style="color: #F86039;">Requires the European ROM: press Select European ROM and choose your dump (Mystical Ninja 2 Starring Goemon).</b><b data-if="eu_rom_present" style="color: #45D043;">The European ROM is present.</b><span data-if="eu_rom_installed_now"><br/><b>Takes effect the next time the game is started.</b></span>
+                        </p>
+                        <!-- no European ROM yet: pick the dump (copied as goemon2.eu.z64, ga_lang_eu.cpp gga_eu_rom_install) -->
+                        <div data-if="!eu_rom_present">
+                            <div class="gga-eu-rom-row">
+                                <button
+                                    class="nav-all"
+                                    onclick="select_eu_rom"
+                                    data-event-focus="set_cur_config_index(12)"
+                                    id="select_eu_rom_button"
+                                    style="nav-left: #use_european_version_off; nav-up: #tab_general; nav-down: #rumble_strength_input"
+                                >Select European ROM</button>
+                            </div>
+                        </div>
+                    </div>
                     <p data-if="cur_config_index == 11">
                         Enables RT64's developer tools: <b>F1</b> opens the inspector (right-click on the picture lists the draw calls under the cursor).
                         <br/>

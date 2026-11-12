@@ -9,47 +9,138 @@
 				width: 100%;
 				height: 100%;
 			}
-			/* GGA: the background art overflows under the menu and titles: let clicks through */
-			.launcher__background-wrapper
+			/* GGA (2026-11-12): full-window art (background.png fits the height, centered), sides filled with its
+			   own sky: bands of vertical-gradient with the colors measured on the image's edge columns (rows 0, 100,
+			   200, 300, 400, 450, 500, 550 of 724). linear-gradient with several stops needs shaders the UI renderer lacks. */
+			/* menu: one row, left to right, centered at the bottom of the whole window */
+			.launcher .launcher__vertical-split { right: 0; }
+			.launcher .launcher__content-quadrant
 			{
+				flex-direction: row;
+				flex-wrap: wrap;
+				justify-content: center;
+				align-items: flex-end;
+				align-content: flex-end; /* wrapped rows packed at the bottom, in order (default stretch spread them over the height) */
+				padding-bottom: 160dp;
+			}
+			/* frames in the style of the game's menus (measured on its "Option" button: fill gradient #6B31C6 -> #29007B):
+			   plain fill = middle of the gradient, border = the same mixed half with white; white text as in the game */
+			.launcher .launcher__content-quadrant .menu-list-item
+			{
+				width: auto;
+				margin: 8dp 12dp;
+				padding: 12dp 28dp;
+				color: #FFFFFF;
+				background-color: #4A10AD;
+				border: 4dp #A487D6;
+				border-radius: 4dp;
+			}
+			.launcher .launcher__content-quadrant .menu-list-item__bullet { display: none; }
+			/* selected text blinks as in the game's menus (colors measured on its "Start" button): white, green, yellow,
+			   black, yellow, green, then white again (back and forth); hard steps (each color held, then a 0.01 % jump) */
+			/* @keyframes gga-menu-blink: in recomp.rcss (shared with config_menu.rml and the prompt buttons) */
+			/* selected: lighter fill (left end of the game's gradient), white border, blinking text (0.04 s per color) */
+			.launcher .launcher__content-quadrant .menu-list-item:focus,
+			.launcher .launcher__content-quadrant .menu-list-item:hover
+			{
+				color: #FFFFFF;
+				background-color: #6B31C6;
+				border-color: #FFFFFF;
+				decorator: none;
+				animation: 0.24s linear-in-out infinite gga-menu-blink;
+			}
+			/* menu fades in like the logo (1.6 s), from 3 s to 4.6 s */
+			@keyframes gga-menu-in
+			{
+				0% { opacity: 0; }
+				65.2% { opacity: 0; }
+				100% { opacity: 1; }
+			}
+			.launcher__content-quadrant
+			{
+				opacity: 1;
+				animation: 4.6s sine-in-out 1 gga-menu-in;
+			}
+			/* A / Enter / click during the intro (ui_state.cpp): animations cut, each element takes its final opacity */
+			.gga-skip .gga-white, .gga-skip .gga-logo img, .gga-skip .launcher__content-quadrant
+			{
+				animation: none;
+			}
+			.gga-bg, .gga-bg-band, .gga-bg-art, .gga-logo, .gga-white
+			{
+				position: absolute;
+				left: 0;
+				right: 0;
 				pointer-events: none;
 			}
-			/* GGA: left-half art, mirror of the right one (anchored left, slides to the right while fading in) */
-			@keyframes slide-gga-bg-over
+			.gga-bg { top: 0; bottom: 0; background-color: #FEFEFE; }
+			.gga-bg-art
 			{
-				0% { transform: translateX(-100dp); }
-				100% { transform: translateX(0dp); }
-			}
-			.launcher__background-wrapper--left
-			{
-				right: -100%;
-				left: -10vw;
+				display: flex;
+				justify-content: center;
 				top: 0;
 				bottom: 0;
-				animation: 25s cubic-out 1 slide-gga-bg-over;
+				left: -100%;
+				right: -100%;
 			}
-			.launcher__background-gga
+			.gga-bg-art img { height: 100%; width: auto; }
+			/* white screen that fades out on start, as the game's title menu */
+			@keyframes gga-white-out
 			{
-				height: 126%;
+				0% { opacity: 1; }
+				20% { opacity: 1; }
+				100% { opacity: 0; }
+			}
+			.gga-white
+			{
+				top: 0;
+				bottom: 0;
+				background-color: #FFFFFF;
+				opacity: 0;
+				animation: 2s sine-in-out 1 gga-white-out;
+			}
+			/* logo: top, centered, height follows the window; fades in once the background is there */
+			@keyframes gga-logo-in
+			{
+				0% { opacity: 0; }
+				55% { opacity: 0; }
+				100% { opacity: 1; }
+			}
+			.gga-logo
+			{
+				display: flex;
+				justify-content: center;
+				top: 4vh;
+				height: 30vh;
+			}
+			.gga-logo img
+			{
+				height: 100%;
 				width: auto;
-				animation: 2.5s cubic-in-out 1 fade-mm-in;
-				opacity: 0.1;
+				opacity: 1;
+				animation: 3.5s sine-in-out 1 gga-logo-in;
 			}
 		</style>
 	</head>
 	<body>
 		<div id="window" data-model="launcher_model">
-			<div class="launcher">
+			<div class="launcher" data-class-gga-skip="intro_skipped">
+				<div class="gga-bg">
+					<div class="gga-bg-band" style="top: 0%; bottom: 86.19%; decorator: vertical-gradient(#33BAFB #46C5FC);"></div>
+					<div class="gga-bg-band" style="top: 13.81%; bottom: 72.38%; decorator: vertical-gradient(#46C5FC #70D2FD);"></div>
+					<div class="gga-bg-band" style="top: 27.62%; bottom: 58.56%; decorator: vertical-gradient(#70D2FD #A2E1FD);"></div>
+					<div class="gga-bg-band" style="top: 41.44%; bottom: 44.75%; decorator: vertical-gradient(#A2E1FD #D5F2FD);"></div>
+					<div class="gga-bg-band" style="top: 55.25%; bottom: 37.85%; decorator: vertical-gradient(#D5F2FD #E7F7FD);"></div>
+					<div class="gga-bg-band" style="top: 62.15%; bottom: 30.94%; decorator: vertical-gradient(#E7F7FD #F5FBFD);"></div>
+					<div class="gga-bg-band" style="top: 69.06%; bottom: 24.03%; decorator: vertical-gradient(#F5FBFD #FEFEFE);"></div>
+					<div class="gga-bg-art"><img src="?/gga/background" /></div>
+				</div>
+				<div class="gga-logo">
+					<img data-if="!use_european_version" src="?/gga/logo_us" />
+					<img data-if="use_european_version" src="?/gga/logo_eur" />
+				</div>
 				<div class="launcher__vertical-split">
-					<div class="launcher__background-wrapper launcher__background-wrapper--left">
-						<img src="?/gga/launcher_bg" class="launcher__background-gga" />
-					</div>
-					<div class="launcher__title-quadrant">
-						<button class="subtitle-title" selected>
-							<div><h3>GGA: Recompiled</h3></div>
-							<div><h1>Goemon's Great Adventure</h1></div>
-						</button>
-					</div>
+					<div class="launcher__title-quadrant"></div>
 					<div class="launcher__content-quadrant">
 						<button data-if="!mm_rom_valid" onclick="select_rom" class="menu-list-item" autofocus>
 							<div class="menu-list-item__bullet"></div>
@@ -77,13 +168,10 @@
 						</button>
 					</div>
 				</div>
-				<div class="launcher__vertical-split launcher__vertical-split--right">
-					<div class="launcher__title-quadrant launcher__title-quadrant--right"></div>
-					<div class="launcher__content-quadrant"></div>
-				</div>
 				<div class="bottom-left">
-					<label>v{{version_number}}</label>
+					<label style="color: #000000; font-weight: bold;">v{{version_number}}</label>
 				</div>
+				<div class="gga-white"></div>
 			</div>
 		</div>
 	</body>

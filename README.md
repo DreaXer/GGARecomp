@@ -13,7 +13,7 @@ game, with enhancements such as high framerates, widescreen and up to 4 players.
 
 ### **This repository and its releases do not contain game assets. You need your own copy of the original game to play or build this project.**
 
-> **Version 0.2.1 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
+> **Version 0.3.0 is an early release.** Worlds 1, 2 and 3 (with their castles and bosses) have been played from start
 > to finish. World 4 has not been tested yet: expect problems there, and keep a backup of your saves.
 
 ## Supported ROM
@@ -37,13 +37,17 @@ texts:
 | Header code | `NGMP` |
 | SHA-1 | `aadd1d7e943cbfa5496a370158b5f8fe17b06415` |
 
-1. Copy it, in `.z64` format, to `%LOCALAPPDATA%\GGARecompiled\` and name it `goemon2.eu.z64`: the same folder as
-   `gga.us.z64` (the copy of your US ROM made by the launcher), **not** inside the `saves` folder.
-2. Start the game: the title screen now shows **Option**, then **Language**, with **English / Français / Deutsch**,
+1. In the launcher, open **Settings**, General tab: point at **Use European Version** (first option), then press
+   **Select European ROM** in its description and choose your European dump (`.z64`, `.v64` or `.n64`). It is copied as `goemon2.eu.z64`
+   to `%LOCALAPPDATA%\GGARecompiled\`, and the description turns green.
+2. Set **Use European Version** to **On** (greyed out until the European ROM is present). The launcher then shows the
+   European logo.
+3. Start the game: the title screen now shows **Option**, then **Language**, with **English / Français / Deutsch**,
    like the European release.
 
 The dialogues, the font with accented letters, the title menu, the world map, the journal, the world title cards and
-"Stage Clear" are translated. Without that file, nothing changes.
+"Stage Clear" are translated. Without that file, or with **Use European Version** set to **Off** (the default), the game
+stays the US version. The option is read when the game starts: after changing it during a game, restart the game.
 
 ## System requirements
 
@@ -59,13 +63,16 @@ If the game crashes on startup, update your graphics drivers first.
 
 ## How to play
 
-1. Download `GGARecompiled-v0.2.1-windows.zip` (or `GGARecompiled-v0.2.1-linux.tar.gz`) from the
+1. Download `GGARecompiled-v0.3.0-windows.zip` (or `GGARecompiled-v0.3.0-linux.tar.gz`) from the
    [releases](https://github.com/DreaXer/GGARecomp/releases) and extract it anywhere.
 2. Run `GGARecompiled.exe`. On Linux, open a terminal **in the extracted folder** and run `./GGARecompiled` (started
    from another folder, the game does not find its `assets` folder).
 3. On first launch, the launcher asks for your Goemon's Great Adventure ROM. It is copied to
    `%LOCALAPPDATA%\GGARecompiled\` (Linux: `~/.config/GGARecompiled/`).
-4. Start the game from the launcher.
+4. Open **Controls** and choose a device (keyboard or controller) for each player: on first launch every player is set
+   to **None**.
+5. Start the game from the launcher. It first runs like the original (4:3, original resolution and framerate): turn on
+   widescreen, high framerate and the other enhancements in **Settings**.
 
 Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGARecompiled\` (Linux:
 `~/.config/GGARecompiled/`).
@@ -80,11 +87,8 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
 - **Up to 4 players**: the 1P / 2P menu also offers 3P and 4P (greyed out without enough controllers). Players 3 and 4
   are real players, with their own HUD, lives, money and weapons, kept between areas and levels, on the world map too.
 - **Controller Pak saves**: saving and loading work like on the console (Controller Pak emulated on port 1).
-- **Extra options** (General tab):
-  - *Unlock Sasuke and Yae*: all 4 characters can be chosen from a new game, so every player gets one.
-  - *Replay Castles*: a beaten castle (shown in ruins on the map) can be entered again and played in full, boss
-    included.
-  - *Draw Distance*: Original or x2 on the sides, the fog stays the game's.
+- **Extra options** are in the **Enhanced** tab of the settings: *Save Anywhere*, *Unlock Sasuke and Yae* and
+  *Replay Castles*. *Draw Distance* is in the Graphics tab.
 - **RT64 texture packs** (`.rtz`) are supported through the Mods menu.
 - Extra graphics options: MSAA, downsampling, high precision framebuffer, texture filtering, output filter, 2D upscale.
 
@@ -99,7 +103,7 @@ Settings, controller mappings, saves and mods are stored in `%LOCALAPPDATA%\GGAR
 
 Open an [issue](https://github.com/DreaXer/GGARecomp/issues) with:
 
-- the version (for example 0.2.1) and your Windows version or Linux distribution;
+- the version (for example 0.3.0) and your Windows version or Linux distribution;
 - where it happened (world, level, area), how many players, and what you did just before;
 - what happened (freeze, crash, black textures, wrong sound…), with a screenshot if possible;
 - your graphics settings (Framerate, Aspect Ratio);

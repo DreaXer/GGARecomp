@@ -48,7 +48,7 @@
 
 #include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
-const std::string version_string = "0.2.1";
+const std::string version_string = "0.3.0";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -138,7 +138,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
     window = SDL_CreateWindow("Goemon's Great Adventure: Recompiled",SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960,  flags);
 #if defined(__linux__)
-    SetImageAsIcon("icons/512.png",window);
+    SetImageAsIcon("icons/piece1.png",window); // name unused: the icon is embedded (icon_bytes, CMakeLists.txt)
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
         SDL_SetWindowFullscreen(window,SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
@@ -216,7 +216,8 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     // Convert the audio from 16-bit values to floats and swap the audio channels into the
     // swap buffer to correct for the address xor caused by endianness handling.
-    float cur_main_volume = goemon64::get_main_volume() / 100.0f; // Get the current main volume, normalized to 0.0-1.0.
+    float gga_reset_volume(); // GGA: sound fade of the Reset button (src/game/ga_reset.cpp), 1 otherwise
+    float cur_main_volume = goemon64::get_main_volume() / 100.0f * gga_reset_volume(); // Get the current main volume, normalized to 0.0-1.0.
     for (size_t i = 0; i < sample_count; i += input_channels) {
         swap_buffer[i + 0 + duplicated_input_frames * input_channels] = audio_data[i + 1] * (0.5f / 32768.0f) * cur_main_volume;
         swap_buffer[i + 1 + duplicated_input_frames * input_channels] = audio_data[i + 0] * (0.5f / 32768.0f) * cur_main_volume;

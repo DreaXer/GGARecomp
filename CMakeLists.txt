@@ -126,6 +126,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/game/debug.cpp
     ${CMAKE_SOURCE_DIR}/src/game/unknown_symbols.cpp
     ${CMAKE_SOURCE_DIR}/src/game/ga_pak.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/ga_reset.cpp
     ${CMAKE_SOURCE_DIR}/src/game/ga_widescreen.cpp
     ${CMAKE_SOURCE_DIR}/src/game/rom_decompression.cpp
     ${CMAKE_SOURCE_DIR}/src/game/ga_lang_eu.cpp
@@ -279,10 +280,10 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
 
     add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
 
-    # Generate icon_bytes.c from the app icon PNG.
+    # Generate icon_bytes.c from the app icon PNG (Linux window icon; Windows uses icons/app.rc).
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
-        COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
-        DEPENDS ${CMAKE_SOURCE_DIR}/icons/512.png
+        COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/piece1.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
+        DEPENDS ${CMAKE_SOURCE_DIR}/icons/piece1.png
     )
     target_sources(GGARecompiled PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
 

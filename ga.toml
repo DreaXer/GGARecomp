@@ -928,3 +928,16 @@ before_vram = 0x08001010
 func = "func_08001448_7EA3E8"
 text = "{ float ga_wake_distance_f(float); ctx->f18.fl = ga_wake_distance_f(ctx->f18.fl); }"
 before_vram = 0x0800179C
+
+# Bouton Reset du menu (2026-11-12, src/game/ga_reset.cpp) : gestionnaire des scenes func_800C7B10.
+# Etat 8 (attente d'une demande de scene, chaque image) : ecran noir -> demande de retour aux logos (func_800DB140 du jeu).
+[[patches.hook]]
+func = "func_800C7B10_582D30"
+text = "{ void ga_reset_poll(uint8_t*, recomp_context*); ga_reset_poll(rdram, ctx); }"
+before_vram = 0x800C7D28
+
+# Etat 5 (creation des logos) apres notre demande : donnees de partie du demarrage, overlay 8 recharge, notre etat remis a zero.
+[[patches.hook]]
+func = "func_800C7B10_582D30"
+text = "{ void ga_reset_logos(uint8_t*, recomp_context*); ga_reset_logos(rdram, ctx); }"
+before_vram = 0x800C7C70

@@ -13,6 +13,7 @@
 void save_write(RDRAM_ARG PTR(void) rdram_address, uint32_t offset, uint32_t count);
 void save_read(RDRAM_ARG PTR(void) rdram_address, uint32_t offset, uint32_t count);
 void save_write_ptr(const void* in, uint32_t offset, uint32_t count);
+extern "C" void gga_pak_written(void); // ga_reset.cpp: the Reset button is greyed out for a while after a write
 
 // Ports with a Controller Pak. A port with a pak has no Rumble Pak (hook of func_80001F24 in ga.toml), like on hardware.
 static constexpr bool pak_on_port[4] = { true, false, false, false };
@@ -107,6 +108,7 @@ extern "C" void __osContRamWrite_recomp(uint8_t* rdram, recomp_context* ctx) {
     }
     if (address * BLOCK < PAK_SIZE) {   // writes above 32 KB (bank select of a 1-bank pak) are ignored, like on hardware
         save_write(rdram, (int32_t)ctx->r7, port * PAK_SIZE + address * BLOCK, BLOCK);
+        gga_pak_written();
     }
     ctx->r2 = 0;
 }

@@ -22,6 +22,148 @@
 			flex: 1;
 			text-align: center;
 		}
+
+		/* GGA (2026-11-12): launcher art behind the menu before the game starts (copy of launcher.rml's .gga-bg layers),
+		   darkened by a black layer (80 %) */
+		.gga-menu-bg-holder, .gga-bg, .gga-bg-band, .gga-bg-art, .gga-bg-dark
+		{
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 0;
+			bottom: 0;
+			pointer-events: none;
+		}
+		.gga-bg { background-color: #FEFEFE; }
+		.gga-bg-art
+		{
+			display: flex;
+			justify-content: center;
+			left: -100%;
+			right: -100%;
+		}
+		.gga-bg-art img { height: 100%; width: auto; }
+		.gga-bg-dark { background-color: rgba(0, 0, 0, 0.8); }
+
+		/* separator under the tabs: white, 3dp, as the bottom border of the tab row (inset 16dp left / right, same gap above as
+		   below: tabs padding-bottom); the game's thin line on top of each tab's form removed; square window (the game's menus) */
+		.config__form { border-top-width: 0; }
+		/* follows the tabs' padding-top (8dp + 25dp); right 24dp + 8dp button margin = ends where the separator ends (32dp) */
+		.config__icon-buttons { top: 33dp; right: 24dp; }
+		.centered-page__modal { border-radius: 0; }
+
+		/* GGA (2026-11-12): tabs in the frames of the launcher menu (launcher.rml): plain purple fill #4A10AD, border
+		   #A487D6, white text; the selected tab is fully opaque, the others faded; the tab under the mouse or the
+		   controller / keyboard cursor gets the lighter fill, a white border and the text blink of the game's menus
+		   (same keyframes as launcher.rml). */
+		/* @keyframes gga-menu-blink: in recomp.rcss (shared with launcher.rml and the prompt buttons) */
+		/* narrow window: the tabs go on a 2nd row instead of shrinking (text overflowing), and keep clear of the round buttons
+		   (absolute, top right): padding-right set by ui_config.cpp gga_reset_button_refresh, 2 or 3 buttons */
+		#config_tabset tabs
+		{
+			flex-wrap: wrap;
+			padding-right: 238dp;
+			padding-top: 25dp;    /* tabs centered between the window's top and the separator */
+			padding-bottom: 19dp; /* (+ 8dp tab margin); top + bottom kept: the separator does not move */
+			margin: 0 32dp;
+			border-bottom: 3dp #FFFFFF;
+		}
+		#config_tabset .tab
+		{
+			flex: 0 0 auto;
+			margin: 0 6dp 8dp 6dp;
+			padding: 12dp 24dp;
+			opacity: 0.6;
+			color: #FFFFFF;
+			background-color: #4A10AD;
+			border: 4dp #A487D6;
+			border-radius: 4dp;
+		}
+		#config_tabset .tab .tab__indicator { display: none; }
+		#config_tabset .tab:selected { opacity: 1; }
+		#config_tabset .tab:hover,
+		.rmlui-window:not([mouse-active]) #config_tabset .tab:focus
+		{
+			opacity: 1;
+			background-color: #6B31C6;
+			border-color: #FFFFFF;
+			transition: none;
+			animation: 0.24s linear-in-out infinite gga-menu-blink;
+		}
+		/* "Select European ROM" (General tab, Use European Version): same frame, text blinks under the cursor */
+		.gga-eu-rom-row
+		{
+			display: flex;
+			justify-content: center; /* centered in the description column */
+			margin-top: 16dp;        /* space under the red text */
+		}
+		#select_eu_rom_button
+		{
+			padding: 8dp 20dp;
+			font-weight: 700;
+			font-size: 30dp;   /* x1.5 the description text (20dp) */
+			line-height: 30dp;
+			color: #FFFFFF;
+			background-color: #4A10AD;
+			border: 4dp #A487D6;
+			border-radius: 4dp;
+			cursor: pointer;
+		}
+		#select_eu_rom_button:hover,
+		.rmlui-window:not([mouse-active]) #select_eu_rom_button:focus
+		{
+			background-color: #6B31C6;
+			border-color: #FFFFFF;
+			animation: 0.24s linear-in-out infinite gga-menu-blink;
+		}
+
+		/* quit / close buttons (top right): same frames, round; the icon blinks under the cursor (image-color) */
+		@keyframes gga-icon-blink
+		{
+			0% { image-color: #FFFFFF; }
+			16.66% { image-color: #FFFFFF; }
+			16.67% { image-color: #00FF00; }
+			33.32% { image-color: #00FF00; }
+			33.33% { image-color: #FFFF00; }
+			49.99% { image-color: #FFFF00; }
+			50% { image-color: #000000; }
+			66.66% { image-color: #000000; }
+			66.67% { image-color: #FFFF00; }
+			83.32% { image-color: #FFFF00; }
+			83.33% { image-color: #00FF00; }
+			99.99% { image-color: #00FF00; }
+			100% { image-color: #FFFFFF; }
+		}
+		.config__icon-buttons .icon-button
+		{
+			background-color: #4A10AD;
+			border: 4dp #A487D6;
+			border-radius: 32dp; /* RmlUi: no % here; >= half of the box (53.8dp + 2 x 4dp border) = round */
+		}
+		.config__icon-buttons .icon-button svg { image-color: #FFFFFF; }
+		.config__icon-buttons .icon-button:hover,
+		.rmlui-window:not([mouse-active]) .config__icon-buttons .icon-button:focus
+		{
+			background-color: #6B31C6;
+			border-color: #FFFFFF;
+		}
+		.config__icon-buttons .icon-button:hover svg,
+		.rmlui-window:not([mouse-active]) .config__icon-buttons .icon-button:focus svg
+		{
+			transition: none;
+			animation: 0.24s linear-in-out infinite gga-icon-blink;
+		}
+		/* Reset greyed out (Controller Pak written recently): no highlight, no blink */
+		.config__icon-buttons .icon-button[disabled],
+		.config__icon-buttons .icon-button[disabled]:hover
+		{
+			opacity: 0.4;
+			background-color: #4A10AD;
+			border-color: #A487D6;
+			cursor: default;
+		}
+		.config__icon-buttons .icon-button[disabled] svg,
+		.rmlui-window:not([mouse-active]) .config__icon-buttons .icon-button[disabled]:focus svg { animation: none; }
 	</style>
 	<link type="text/template" href="config_menu/general.rml" />
 	<link type="text/template" href="config_menu/controls.rml" />
@@ -34,6 +176,22 @@
 <body class="window">
 	<!-- <handle move_target="#document"> -->
 		<div id="window" class="rmlui-window" style="display:flex; flex-flow: column; background-color:rgba(0,0,0,0)" onkeydown="config_keydown">
+			<!-- GGA: before the game starts, the launcher's art behind the menu, darkened (same layers as launcher.rml) -->
+			<div class="gga-menu-bg-holder" data-model="general_model">
+				<div data-if="!game_started">
+					<div class="gga-bg">
+						<div class="gga-bg-band" style="top: 0%; bottom: 86.19%; decorator: vertical-gradient(#33BAFB #46C5FC);"></div>
+						<div class="gga-bg-band" style="top: 13.81%; bottom: 72.38%; decorator: vertical-gradient(#46C5FC #70D2FD);"></div>
+						<div class="gga-bg-band" style="top: 27.62%; bottom: 58.56%; decorator: vertical-gradient(#70D2FD #A2E1FD);"></div>
+						<div class="gga-bg-band" style="top: 41.44%; bottom: 44.75%; decorator: vertical-gradient(#A2E1FD #D5F2FD);"></div>
+						<div class="gga-bg-band" style="top: 55.25%; bottom: 37.85%; decorator: vertical-gradient(#D5F2FD #E7F7FD);"></div>
+						<div class="gga-bg-band" style="top: 62.15%; bottom: 30.94%; decorator: vertical-gradient(#E7F7FD #F5FBFD);"></div>
+						<div class="gga-bg-band" style="top: 69.06%; bottom: 24.03%; decorator: vertical-gradient(#F5FBFD #FEFEFE);"></div>
+						<div class="gga-bg-art"><img src="?/gga/background" /></div>
+						<div class="gga-bg-dark"></div>
+					</div>
+				</div>
+			</div>
 			<div class="centered-page" onclick="close_config_menu_backdrop">
 				<div class="centered-page__modal">
 					<tabset class="tabs" id="config_tabset">
@@ -87,7 +245,18 @@
 							<template src="config-menu__debug" />
 						</panel>
 					</tabset>
-					<div class="config__icon-buttons">
+					<div class="config__icon-buttons" data-model="general_model">
+						<!-- GGA: Reset (back to the boot logos, src/game/ga_reset.cpp); in game only, greyed out after a Controller Pak write -->
+						<div data-if="game_started">
+							<button
+								class="icon-button"
+								onclick="reset_game"
+								id="config__reset-game-button"
+								data-attrif-disabled="!reset_available"
+							>
+								<svg src="icons/Reset.svg" />
+							</button>
+						</div>
 						<button
 							class="icon-button"
 							onclick="open_quit_game_prompt"

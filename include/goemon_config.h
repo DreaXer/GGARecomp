@@ -148,6 +148,22 @@ namespace goemon64 {
     SaveAnywhere get_save_anywhere();
     void set_save_anywhere(SaveAnywhere mode);
 
+    // GGA: "Use European Version" (General tab): the launcher shows logo_eur.png instead of logo_us.png
+    // (src/ui/ui_launcher.cpp, assets/launcher.rml) and goemon2.eu.z64 is read at boot (src/game/ga_lang_eu.cpp).
+    enum class UseEuropeanVersion {
+        Off,
+        On,
+        OptionCount
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(goemon64::UseEuropeanVersion, {
+        {goemon64::UseEuropeanVersion::Off, "Off"},
+        {goemon64::UseEuropeanVersion::On, "On"}
+    });
+
+    UseEuropeanVersion get_use_european_version();
+    void set_use_european_version(UseEuropeanVersion mode);
+
     // GGA: RT64 developer mode (F1 = inspector), read when the renderer is created (src/main/rt64_render_context.cpp).
     enum class Rt64DeveloperMode {
         Off,

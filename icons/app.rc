@@ -1,6 +1,5 @@
-1 ICON DISCARDABLE "512.ico"
-2 ICON DISCARDABLE "256.ico"
-3 ICON DISCARDABLE "128.ico"
-4 ICON DISCARDABLE "64.ico"
-5 ICON DISCARDABLE "32.ico"
-6 ICON DISCARDABLE "16.ico"
+// GGA (2026-11-12): two icons drawn by the project's author (tools/make_ico.ps1 from icons/piece1.png / piece2.png).
+// 1 = default icon of the .exe and of the game window; 2 = alternative, chosen by the player in a shortcut's
+// Properties > Change Icon.
+1 ICON DISCARDABLE "piece1.ico"
+2 ICON DISCARDABLE "piece2.ico"

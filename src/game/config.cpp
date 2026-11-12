@@ -23,12 +23,14 @@ constexpr std::u8string_view graphics_filename = u8"graphics.json";
 constexpr std::u8string_view controls_filename = u8"controls.json";
 constexpr std::u8string_view sound_filename = u8"sound.json";
 
-constexpr auto res_default            = ultramodern::renderer::Resolution::Auto;
+// GGA (2026-11-12): first launch shows the game as the original (4:3, native resolution, original framerate, no MSAA);
+// the player changes them in Graphics.
+constexpr auto res_default            = ultramodern::renderer::Resolution::Original;
 constexpr auto hr_default             = ultramodern::renderer::HUDRatioMode::Clamp16x9;
 constexpr auto api_default            = ultramodern::renderer::GraphicsApi::Auto;
-constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Expand;
-constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::MSAA2X;
-constexpr auto rr_default             = ultramodern::renderer::RefreshRate::Display;
+constexpr auto ar_default             = ultramodern::renderer::AspectRatio::Original;
+constexpr auto msaa_default           = ultramodern::renderer::Antialiasing::None;
+constexpr auto rr_default             = ultramodern::renderer::RefreshRate::Original;
 constexpr auto hpfb_default           = ultramodern::renderer::HighPrecisionFramebuffer::Auto;
 constexpr int ds_default              = 1;
 constexpr int rr_manual_default       = 60;
@@ -245,6 +247,7 @@ bool save_general_config(const std::filesystem::path& path) {
     config_json["unlock_characters"] = goemon64::get_unlock_characters();
     config_json["replay_castles"] = goemon64::get_replay_castles();
     config_json["save_anywhere"] = goemon64::get_save_anywhere();
+    config_json["use_european_version"] = goemon64::get_use_european_version();
     config_json["rt64_developer_mode"] = goemon64::get_rt64_developer_mode();
     config_json["debug_mode"] = goemon64::get_debug_mode_enabled();
 
@@ -253,7 +256,7 @@ bool save_general_config(const std::filesystem::path& path) {
 
 void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_targeting_mode(from_or_default(config_json, "targeting_mode", goemon64::TargetingMode::Switch));
-    recomp::set_background_input_mode(from_or_default(config_json, "background_input_mode", recomp::BackgroundInputMode::On));
+    recomp::set_background_input_mode(from_or_default(config_json, "background_input_mode", recomp::BackgroundInputMode::Off));
     recomp::set_rumble_strength(from_or_default(config_json, "rumble_strength", 25));
     recomp::set_gyro_sensitivity(from_or_default(config_json, "gyro_sensitivity", 50));
     recomp::set_mouse_sensitivity(from_or_default(config_json, "mouse_sensitivity", is_steam_deck ? 50 : 0));
@@ -265,7 +268,8 @@ void set_general_settings_from_json(const nlohmann::json& config_json) {
     goemon64::set_draw_distance(from_or_default(config_json, "draw_distance", goemon64::DrawDistance::Original));
     goemon64::set_unlock_characters(from_or_default(config_json, "unlock_characters", goemon64::UnlockCharacters::Off));
     goemon64::set_replay_castles(from_or_default(config_json, "replay_castles", goemon64::ReplayCastles::Off));
-    goemon64::set_save_anywhere(from_or_default(config_json, "save_anywhere", goemon64::SaveAnywhere::On));
+    goemon64::set_save_anywhere(from_or_default(config_json, "save_anywhere", goemon64::SaveAnywhere::Off));
+    goemon64::set_use_european_version(from_or_default(config_json, "use_european_version", goemon64::UseEuropeanVersion::Off));
     goemon64::set_rt64_developer_mode(from_or_default(config_json, "rt64_developer_mode", goemon64::Rt64DeveloperMode::Off));
     goemon64::set_debug_mode_enabled(from_or_default(config_json, "debug_mode", false));
 }
@@ -323,9 +327,59 @@ void assign_all_mappings(recomp::InputDevice device, const recomp::DefaultN64Map
     assign_mapping_complete(device, recomp::GameInput::APPLY_MENU, values.apply_menu);
 };
 
+// GGA: one set of keys per player (src/game/controls.cpp). The functions below work on the set of the "bind port".
+void gga_set_bind_port(int port);
+int gga_bind_port();
+void gga_ports_init(); // input.cpp: controller_ports.txt, created with every player on None when missing
+
+// Same default keyboard keys for every player (two players on one keyboard then rebind theirs).
+static const recomp::DefaultN64Mappings& keyboard_defaults() {
+    return recomp::default_n64_keyboard_mappings;
+}
+
+// Keyboard keys of a player put on the keyboard. Alone on it (shared = false): no key at all -> the default keys.
+// Shared with other players: keys still exactly the default ones -> cleared, each player sets their own (keys a player
+// already changed are kept). The menu inputs (player 1's, shared) are left alone.
+void gga_keyboard_prepare(int port, bool shared) {
+    const int prev = gga_bind_port();
+    gga_set_bind_port(port);
+    bool any = false;
+    bool is_default = true;
+    for (size_t i = 0; i < recomp::get_num_inputs(); i++) {
+        const recomp::GameInput input = static_cast<recomp::GameInput>(i);
+        if (input == recomp::GameInput::TOGGLE_MENU || input == recomp::GameInput::ACCEPT_MENU || input == recomp::GameInput::APPLY_MENU) {
+            continue;
+        }
+        const std::vector<recomp::InputField>& def = recomp::get_default_mapping_for_input(recomp::default_n64_keyboard_mappings, input);
+        for (size_t b = 0; b < recomp::bindings_per_input; b++) {
+            const recomp::InputField& cur = recomp::get_input_binding(input, b, recomp::InputDevice::Keyboard);
+            const recomp::InputField expected = b < def.size() ? def[b] : recomp::InputField{};
+            any |= cur.input_type != 0;
+            is_default &= cur.input_type == expected.input_type && cur.input_id == expected.input_id;
+        }
+    }
+    for (size_t i = 0; i < recomp::get_num_inputs(); i++) {
+        const recomp::GameInput input = static_cast<recomp::GameInput>(i);
+        if (input == recomp::GameInput::TOGGLE_MENU || input == recomp::GameInput::ACCEPT_MENU || input == recomp::GameInput::APPLY_MENU) {
+            continue;
+        }
+        if (!shared && !any) {
+            assign_mapping_complete(recomp::InputDevice::Keyboard, input, recomp::get_default_mapping_for_input(recomp::default_n64_keyboard_mappings, input));
+        } else if (shared && any && is_default) {
+            assign_mapping_complete(recomp::InputDevice::Keyboard, input, {});
+        }
+    }
+    gga_set_bind_port(prev);
+}
+
 void goemon64::reset_input_bindings() {
-    assign_all_mappings(recomp::InputDevice::Keyboard, recomp::default_n64_keyboard_mappings);
-    assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+    const int prev = gga_bind_port();
+    for (int port = 0; port < 4; port++) {
+        gga_set_bind_port(port);
+        assign_all_mappings(recomp::InputDevice::Keyboard, keyboard_defaults());
+        assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+    }
+    gga_set_bind_port(prev);
 }
 
 void goemon64::reset_cont_input_bindings() {
@@ -333,7 +387,7 @@ void goemon64::reset_cont_input_bindings() {
 }
 
 void goemon64::reset_kb_input_bindings() {
-    assign_all_mappings(recomp::InputDevice::Keyboard, recomp::default_n64_keyboard_mappings);
+    assign_all_mappings(recomp::InputDevice::Keyboard, keyboard_defaults());
 }
 
 void goemon64::reset_single_input_binding(recomp::InputDevice device, recomp::GameInput input) {
@@ -342,7 +396,7 @@ void goemon64::reset_single_input_binding(recomp::InputDevice device, recomp::Ga
         input,
         recomp::get_default_mapping_for_input(
             device == recomp::InputDevice::Keyboard ?
-                recomp::default_n64_keyboard_mappings :
+                keyboard_defaults() :
                 recomp::default_n64_controller_mappings,
             input
         )
@@ -391,18 +445,28 @@ void add_input_bindings(nlohmann::json& out, recomp::GameInput input, recomp::In
     }
 };
 
+// GGA: "players": [ { "keyboard": ..., "controller": ... } x 4 ] (the menu inputs are player 1's in every entry).
 bool save_controls_config(const std::filesystem::path& path) {
     nlohmann::json config_json{};
+    nlohmann::json& players = config_json["players"];
+    players = nlohmann::json::array();
 
-    config_json["keyboard"] = {};
-    config_json["controller"] = {};
+    const int prev = gga_bind_port();
+    for (int port = 0; port < 4; port++) {
+        gga_set_bind_port(port);
+        nlohmann::json player{};
+        player["keyboard"] = {};
+        player["controller"] = {};
 
-    for (size_t i = 0; i < recomp::get_num_inputs(); i++) {
-        recomp::GameInput cur_input = static_cast<recomp::GameInput>(i);
+        for (size_t i = 0; i < recomp::get_num_inputs(); i++) {
+            recomp::GameInput cur_input = static_cast<recomp::GameInput>(i);
 
-        add_input_bindings(config_json["keyboard"], cur_input, recomp::InputDevice::Keyboard);
-        add_input_bindings(config_json["controller"], cur_input, recomp::InputDevice::Controller);
+            add_input_bindings(player["keyboard"], cur_input, recomp::InputDevice::Keyboard);
+            add_input_bindings(player["controller"], cur_input, recomp::InputDevice::Controller);
+        }
+        players.push_back(player);
     }
+    gga_set_bind_port(prev);
 
     return save_json_with_backups(path, config_json);
 }
@@ -428,7 +492,7 @@ bool load_input_device_from_json(const nlohmann::json& config_json, recomp::Inpu
                 cur_input,
                 recomp::get_default_mapping_for_input(
                     device == recomp::InputDevice::Keyboard ?
-                    recomp::default_n64_keyboard_mappings :
+                    keyboard_defaults() :
                     recomp::default_n64_controller_mappings,
                     cur_input
                 )
@@ -454,13 +518,23 @@ bool load_controls_config(const std::filesystem::path& path) {
         return false;
     }
 
-    if (!load_input_device_from_json(config_json, recomp::InputDevice::Keyboard, "keyboard")) {
-        assign_all_mappings(recomp::InputDevice::Keyboard, recomp::default_n64_keyboard_mappings);
-    }
+    // Older files: a single "keyboard" / "controller" set at the top level, copied to every player.
+    auto players = config_json.find("players");
+    const bool per_player = players != config_json.end() && players->is_array() && players->size() >= 4;
+    const int prev = gga_bind_port();
+    for (int port = 0; port < 4; port++) {
+        gga_set_bind_port(port);
+        const nlohmann::json& player_json = per_player ? (*players)[port] : config_json;
 
-    if (!load_input_device_from_json(config_json, recomp::InputDevice::Controller, "controller")) {
-        assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+        if (!load_input_device_from_json(player_json, recomp::InputDevice::Keyboard, "keyboard")) {
+            assign_all_mappings(recomp::InputDevice::Keyboard, keyboard_defaults());
+        }
+
+        if (!load_input_device_from_json(player_json, recomp::InputDevice::Controller, "controller")) {
+            assign_all_mappings(recomp::InputDevice::Controller, recomp::default_n64_controller_mappings);
+        }
     }
+    gga_set_bind_port(prev);
     return true;
 }
 
@@ -522,6 +596,8 @@ void goemon64::load_config() {
         goemon64::reset_sound_settings();
         save_sound_config(sound_path);
     }
+
+    gga_ports_init();
 }
 
 void goemon64::save_config() {

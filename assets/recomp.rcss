@@ -2319,3 +2319,19 @@ button {
     background-color: #1768E8;
   }
 }
+/* GGA (2026-11-12): text blink of the game's menus, see assets/scss/styles/global.scss */
+@keyframes gga-menu-blink {
+  0% { color: #FFFFFF; }
+  16.66% { color: #FFFFFF; }
+  16.67% { color: #00FF00; }
+  33.32% { color: #00FF00; }
+  33.33% { color: #FFFF00; }
+  49.99% { color: #FFFF00; }
+  50% { color: #000000; }
+  66.66% { color: #000000; }
+  66.67% { color: #FFFF00; }
+  83.32% { color: #FFFF00; }
+  83.33% { color: #00FF00; }
+  99.99% { color: #00FF00; }
+  100% { color: #FFFFFF; }
+}

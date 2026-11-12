@@ -155,6 +155,30 @@ struct ContextDetails {
     Rml::ElementDocument* document;
 };
 
+// GGA: black veil of the Reset button (assets/reset_veil.rml, src/game/ga_reset.cpp), over the game, no input capture.
+static recompui::ContextId gga_veil_context = recompui::ContextId::null();
+float gga_reset_black();
+void gga_reset_button_refresh(); // ui_config.cpp
+
+static void gga_reset_veil_update() {
+    if (gga_veil_context == recompui::ContextId::null()) {
+        return;
+    }
+    const float black = gga_reset_black();
+    const bool shown = recompui::is_context_shown(gga_veil_context);
+    if (black > 0.0f && !shown) {
+        recompui::show_context(gga_veil_context, "");
+    } else if (black <= 0.0f && shown) {
+        recompui::hide_context(gga_veil_context);
+    }
+    if (black > 0.0f) {
+        Rml::Element* veil = gga_veil_context.get_document()->GetElementById("veil");
+        if (veil != nullptr) {
+            veil->SetProperty("opacity", std::to_string(black));
+        }
+    }
+}
+
 class UIState {
     Rml::Element* prev_focused = nullptr;
     bool mouse_is_active_changed = false;
@@ -237,6 +261,9 @@ public:
         launcher_menu_controller->load_document();
         config_menu_controller->load_document();
         recompui::init_prompt_context();
+        gga_veil_context = recompui::create_context(goemon64::get_asset_path("reset_veil.rml"));
+        gga_veil_context.set_captures_input(false);
+        gga_veil_context.set_captures_mouse(false);
     }
 
     void unload() {
@@ -463,6 +490,9 @@ bool recompui::try_deque_event(SDL_Event& out) {
     return ui_event_queue.try_dequeue(out);
 }
 
+bool gga_launcher_intro_active(); // ui_launcher.cpp
+void gga_launcher_intro_skip();
+
 int cont_button_to_key(SDL_ControllerButtonEvent& button) {
     // Configurable accept button in menu
     auto menuAcceptBinding0 = recomp::get_input_binding(recomp::GameInput::ACCEPT_MENU, 0, recomp::InputDevice::Controller);
@@ -561,7 +591,12 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
         recompui::show_context(recompui::get_launcher_context_id(), "");
     }
 
+    gga_reset_veil_update();
+    gga_reset_button_refresh();
+
     std::lock_guard lock{ ui_state_mutex };
+
+    gga_launcher_intro_active(); // GGA: starts the intro clock on the launcher's first frame, even without input
 
     SDL_Event cur_event{};
 
@@ -590,6 +625,33 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
             int sdl_key = cont_button_to_key(cur_event.cbutton);
             if (sdl_key == latest_controller_key_pressed) {
                 latest_controller_key_pressed = SDLK_UNKNOWN;
+            }
+        }
+
+        // GGA: launcher intro (animations): the menus ignore presses; accept (A / Enter) or a click shows everything at once.
+        if (gga_launcher_intro_active()) {
+            bool block = true, skip = false;
+            switch (cur_event.type) {
+            case SDL_EventType::SDL_CONTROLLERBUTTONDOWN:
+                skip = cont_button_to_key(cur_event.cbutton) == SDLK_RETURN;
+                break;
+            case SDL_EventType::SDL_KEYDOWN:
+                skip = cur_event.key.keysym.sym == SDLK_RETURN || cur_event.key.keysym.sym == SDLK_KP_ENTER;
+                break;
+            case SDL_EventType::SDL_MOUSEBUTTONDOWN:
+                skip = true;
+                break;
+            case SDL_EventType::SDL_CONTROLLERAXISMOTION: // stick navigation
+                break;
+            default:
+                block = false; // mouse motion, releases, window events
+                break;
+            }
+            if (skip) {
+                gga_launcher_intro_skip();
+            }
+            if (block) {
+                continue;
             }
         }
 
@@ -752,8 +814,6 @@ void draw_hook(plume::RenderCommandList* command_list, plume::RenderFramebuffer*
     ui_state->update_focus(mouse_moved, non_mouse_interacted);
 
     if (recompui::is_any_context_shown()) {
-        void gga_ports_refresh();
-        gga_ports_refresh(); // controller names / assignment can change at any time (connection, button press)
         ui_state->update_contexts();
 
         int width = swap_chain_framebuffer->getWidth();

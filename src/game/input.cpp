@@ -51,16 +51,20 @@ static struct {
     std::list<std::filesystem::path> files_dropped;
 } DropState;
 
-// GGA: controller -> N64 port assignment, chosen in the Controls menu (like dk64recomp's launcher). Saved by controller GUID in
-// controller_ports.txt (one line per port, empty = automatic) and re-applied when the controller reconnects.
+// GGA: controller -> N64 port assignment, chosen in the "Assign controllers" window of the Controls menu. Saved by controller
+// GUID in controller_ports.txt (one line per port: GUID, "=q" same controller as port q, "kb" keyboard, "-" none; 5th line
+// "exact") and re-applied when the controller reconnects. Files without "exact" (before the window, or never applied):
+// empty line = automatic (free controllers fill the free ports in connection order), keyboard on player 1.
 // Everything below is protected by InputState.cur_controllers_mutex.
 static std::array<std::string, 4> port_guid{};
 static std::array<SDL_JoystickID, 4> port_instance{ -1, -1, -1, -1 };
 // One controller can play several players: port_link[p] = the first earlier port with the same controller, else -1.
 // Saved as "=q": identical controllers share a GUID, so the GUID alone cannot tell which ports share one.
 static std::array<int, 4> port_link{ -1, -1, -1, -1 };
-static std::atomic_int assign_next = -1; // >= 0: assignment in progress, port waiting for a button press
+static std::array<bool, 4> port_kb{ true, false, false, false }; // ports driven by the keyboard
+static bool ports_exact = false; // true: the window's choice only, no automatic port for the other controllers
 static bool ports_loaded = false;
+static std::vector<SDL_JoystickID> menu_devices; // controllers listed in the window (its entries 2..), see gga_devices_snapshot
 
 static std::filesystem::path ports_file() {
     return goemon64::get_app_folder_path() / "controller_ports.txt";
@@ -72,13 +76,30 @@ static std::string controller_guid(SDL_GameController* controller) {
     return buf;
 }
 
+static void save_ports();
+
 static void load_ports() {
     ports_loaded = true;
+    if (!std::filesystem::exists(ports_file())) {
+        // first launch, or file deleted: every player on None, the players choose their device in Controls
+        port_kb.fill(false);
+        ports_exact = true;
+        save_ports();
+        return;
+    }
     std::ifstream file{ ports_file() };
-    for (int p = 0; p < 4 && std::getline(file, port_guid[p]); p++) {
-        if (port_guid[p].size() == 2 && port_guid[p][0] == '=' && port_guid[p][1] >= '0' && port_guid[p][1] < '0' + p) {
-            port_link[p] = port_guid[p][1] - '0';
+    std::array<std::string, 5> line{};
+    for (auto& l : line) {
+        std::getline(file, l);
+    }
+    ports_exact = line[4] == "exact";
+    for (int p = 0; p < 4; p++) {
+        port_kb[p] = ports_exact ? line[p] == "kb" : p == 0;
+        if (line[p].size() == 2 && line[p][0] == '=' && line[p][1] >= '0' && line[p][1] < '0' + p) {
+            port_link[p] = line[p][1] - '0';
             port_guid[p] = port_guid[port_link[p]];
+        } else if (line[p] != "kb" && line[p] != "-") {
+            port_guid[p] = line[p];
         }
     }
 }
@@ -86,87 +107,148 @@ static void load_ports() {
 static void save_ports() {
     std::ofstream file{ ports_file() };
     for (int p = 0; p < 4; p++) {
-        file << (port_link[p] >= 0 ? "=" + std::to_string(port_link[p]) : port_guid[p]) << '\n';
+        file << (port_kb[p] ? "kb" : port_link[p] >= 0 ? "=" + std::to_string(port_link[p]) : port_guid[p].empty() ? "-" : port_guid[p]) << '\n';
     }
+    file << "exact\n";
 }
 
-void gga_assign_start() {
-    std::lock_guard lock{ InputState.cur_controllers_mutex };
-    port_guid = {};
-    port_instance = { -1, -1, -1, -1 };
-    port_link = { -1, -1, -1, -1 };
-    ports_loaded = true;
-    assign_next = 0;
-}
-
-void gga_assign_stop() {
-    std::lock_guard lock{ InputState.cur_controllers_mutex };
-    if (assign_next >= 0) {
-        assign_next = -1;
-        save_ports();
+// Fills InputState.port_controllers from the assignment and the connected controllers (lock held).
+static void resolve_ports() {
+    std::vector<std::pair<SDL_JoystickID, SDL_GameController*>> sorted;
+    for (const auto& [id, state] : InputState.controller_states) {
+        if (state.controller != nullptr) {
+            sorted.emplace_back(id, state.controller);
+        }
     }
-}
-
-int gga_assign_port() {
-    return assign_next;
-}
-
-// A button press during the assignment: the controller gets the next port, even if it already has one (it then plays both
-// players). Back / Select ends it.
-static void assign_button(SDL_JoystickID id, Uint8 button) {
-    std::lock_guard lock{ InputState.cur_controllers_mutex };
-    int port = assign_next;
-    SDL_GameController* controller = SDL_GameControllerFromInstanceID(id);
-    if (port < 0 || controller == nullptr) {
-        return;
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (auto& port : InputState.port_controllers) {
+        port.clear();
     }
-    if (button == SDL_CONTROLLER_BUTTON_BACK) {
-        port = 4;
+    if (!ports_loaded) {
+        load_ports();
     }
-    if (port < 4) {
-        port_instance[port] = id;
-        port_guid[port] = controller_guid(controller);
-        port_link[port] = -1;
-        for (int i = port - 1; i >= 0; i--) {
-            if (port_instance[i] == id) {
-                port_link[port] = i;
+    // Assigned ports first: the controller chosen this session, else (reconnection, new session) the first free one with the
+    // saved GUID. An assigned port whose controller is absent stays empty (fixed port).
+    std::vector<bool> used(sorted.size(), false);
+    for (int p = 0; p < 4; p++) {
+        for (size_t i = 0; i < sorted.size() && port_instance[p] >= 0; i++) {
+            if (sorted[i].first == port_instance[p]) {
+                InputState.port_controllers[p].push_back(sorted[i].second);
+                used[i] = true;
             }
         }
-        port++;
     }
-    if (port >= 4) {
-        port = -1;
-        save_ports();
+    for (int p = 0; p < 4; p++) {
+        if (!InputState.port_controllers[p].empty() || port_guid[p].empty()) {
+            continue;
+        }
+        if (port_link[p] >= 0) { // same controller as an earlier port, already resolved (absent: stays empty)
+            InputState.port_controllers[p] = InputState.port_controllers[port_link[p]];
+            port_instance[p] = port_instance[port_link[p]];
+            continue;
+        }
+        for (size_t i = 0; i < sorted.size(); i++) {
+            if (!used[i] && controller_guid(sorted[i].second) == port_guid[p]) {
+                InputState.port_controllers[p].push_back(sorted[i].second);
+                port_instance[p] = sorted[i].first;
+                used[i] = true;
+                break;
+            }
+        }
     }
-    assign_next = port;
+    if (ports_exact) {
+        return;
+    }
+    // Other controllers: unassigned ports in connection order (SDL instance ids grow with each connection).
+    int next = 0;
+    for (size_t i = 0; i < sorted.size(); i++) {
+        if (used[i]) {
+            continue;
+        }
+        while (next < 4 && (!InputState.port_controllers[next].empty() || !port_guid[next].empty())) {
+            next++;
+        }
+        InputState.port_controllers[next < 4 ? next : 0].push_back(sorted[i].second); // extra controllers share port 0
+    }
 }
 
-// Controls menu: name of the controller on a port.
-std::string gga_port_label(int port) {
-    // Looked up in the connected controllers, not port_controllers: poll_inputs only runs while the game reads the controllers
-    // (not in the launcher / menu).
+// "Assign controllers" window: entries None, Keyboard, then the connected controllers; choice = each port's current entry.
+std::vector<std::string> gga_devices_snapshot(std::array<int, 4>& choice) {
+    std::lock_guard lock{ InputState.cur_controllers_mutex };
+    resolve_ports(); // poll_inputs only runs while the game reads the controllers (not in the launcher)
+    std::vector<std::string> names{ "None", "Keyboard" };
+    menu_devices.clear();
+    for (const auto& [id, state] : InputState.controller_states) {
+        if (state.controller != nullptr) {
+            menu_devices.push_back(id);
+        }
+    }
+    std::sort(menu_devices.begin(), menu_devices.end());
+    for (SDL_JoystickID id : menu_devices) {
+        const char* name = SDL_GameControllerName(SDL_GameControllerFromInstanceID(id));
+        std::string label = name != nullptr ? name : "Controller";
+        int same = (int)std::count_if(names.begin() + 2, names.end(), [&](const std::string& n) { return n.rfind(label, 0) == 0; });
+        names.push_back(same > 0 ? label + " (" + std::to_string(same + 1) + ")" : label); // two identical controllers
+    }
+    for (int p = 0; p < 4; p++) {
+        choice[p] = port_kb[p] ? 1 : 0;
+        if (!InputState.port_controllers[p].empty()) {
+            SDL_JoystickID id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(InputState.port_controllers[p][0]));
+            auto it = std::find(menu_devices.begin(), menu_devices.end(), id);
+            if (it != menu_devices.end()) {
+                choice[p] = 2 + (int)(it - menu_devices.begin());
+            }
+        }
+    }
+    return names;
+}
+
+// Apply of the window: exactly this choice (entries of the last gga_devices_snapshot), saved.
+void gga_ports_apply(const std::array<int, 4>& choice) {
+    std::lock_guard lock{ InputState.cur_controllers_mutex };
+    for (int p = 0; p < 4; p++) {
+        port_kb[p] = choice[p] == 1;
+        port_guid[p].clear();
+        port_instance[p] = -1;
+        port_link[p] = -1;
+        SDL_GameController* controller = choice[p] >= 2 && choice[p] - 2 < (int)menu_devices.size()
+            ? SDL_GameControllerFromInstanceID(menu_devices[choice[p] - 2]) : nullptr;
+        if (controller != nullptr) {
+            port_instance[p] = menu_devices[choice[p] - 2];
+            port_guid[p] = controller_guid(controller);
+            for (int q = p - 1; q >= 0; q--) {
+                if (port_instance[q] == port_instance[p]) {
+                    port_link[p] = q;
+                }
+            }
+        }
+    }
+    ports_exact = true;
+    ports_loaded = true;
+    save_ports();
+    resolve_ports();
+}
+
+// Key scan in a player's page: only the controller of the window's entry `choice` (-1: any, keyboard / None).
+static std::atomic<SDL_JoystickID> scan_controller = -1;
+void gga_scan_device(int choice) {
+    std::lock_guard lock{ InputState.cur_controllers_mutex };
+    scan_controller = choice >= 2 && choice - 2 < (int)menu_devices.size() ? menu_devices[choice - 2] : -1;
+}
+
+// config.cpp load_config, at launch: reads controller_ports.txt, creates it (every player on None) when missing.
+void gga_ports_init() {
+    std::lock_guard lock{ InputState.cur_controllers_mutex };
+    load_ports();
+}
+
+// controls.cpp: does the keyboard drive this port?
+bool gga_port_keyboard(int port) {
     std::lock_guard lock{ InputState.cur_controllers_mutex };
     if (!ports_loaded) {
         load_ports();
     }
-    SDL_GameController* controller = port_instance[port] >= 0 ? SDL_GameControllerFromInstanceID(port_instance[port]) : nullptr;
-    if (controller != nullptr && !SDL_GameControllerGetAttached(controller)) {
-        controller = nullptr;
-    }
-    for (const auto& [id, state] : InputState.controller_states) {
-        if (controller == nullptr && state.controller != nullptr && !port_guid[port].empty() && controller_guid(state.controller) == port_guid[port]) {
-            controller = state.controller;
-        }
-    }
-    if (controller == nullptr && port_guid[port].empty() && !InputState.port_controllers[port].empty()) {
-        controller = InputState.port_controllers[port][0];
-    }
-    if (controller != nullptr) {
-        const char* name = SDL_GameControllerName(controller);
-        std::string label = name != nullptr ? name : "Controller";
-        return port_link[port] >= 0 ? label + " (same as P" + std::to_string(port_link[port] + 1) + ")" : label;
-    }
-    return port_guid[port].empty() ? "-" : "(disconnected)";
+    return port >= 0 && port < 4 && port_kb[port];
 }
 
 std::atomic<recomp::InputDevice> scanning_device = recomp::InputDevice::COUNT;
@@ -240,9 +322,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
             ) {
                 recompui::toggle_fullscreen();
             }
-            if (assign_next >= 0 && keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_ESCAPE) {
-                gga_assign_stop();
-            } else if (scanning_device != recomp::InputDevice::COUNT) {
+            if (scanning_device != recomp::InputDevice::COUNT) {
                 if (keyevent->keysym.scancode == SDL_Scancode::SDL_SCANCODE_ESCAPE) {
                     recomp::cancel_scanning_input();
                 } else if (scanning_device == recomp::InputDevice::Keyboard) {
@@ -297,9 +377,7 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         queue_if_enabled(event);
         break;
     case SDL_EventType::SDL_CONTROLLERBUTTONDOWN:
-        if (assign_next >= 0) {
-            assign_button(event->cbutton.which, event->cbutton.button); // not sent to the menu: the press only picks a port
-        } else if (scanning_device != recomp::InputDevice::COUNT) {
+        if (scanning_device != recomp::InputDevice::COUNT) {
             auto menuToggleBinding0 = recomp::get_input_binding(recomp::GameInput::TOGGLE_MENU, 0, recomp::InputDevice::Controller);
             auto menuToggleBinding1 = recomp::get_input_binding(recomp::GameInput::TOGGLE_MENU, 1, recomp::InputDevice::Controller);
             // note - magic number: 0 is InputType::None
@@ -307,6 +385,9 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
                 (menuToggleBinding1.input_type != 0 && event->cbutton.button == menuToggleBinding1.input_id)) {
                 recomp::cancel_scanning_input();
             } else if (scanning_device == recomp::InputDevice::Controller) {
+                if (scan_controller >= 0 && event->cbutton.which != scan_controller) {
+                    break; // another player's controller
+                }
                 SDL_ControllerButtonEvent* button_event = &event->cbutton;
                 auto scanned_input_index = recomp::get_scanned_input_index();
                 if ((scanned_input_index == static_cast<int>(recomp::GameInput::TOGGLE_MENU) ||
@@ -327,6 +408,9 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
         break;
     case SDL_EventType::SDL_CONTROLLERAXISMOTION:
         if (scanning_device == recomp::InputDevice::Controller) {
+            if (scan_controller >= 0 && event->caxis.which != scan_controller) {
+                break; // another player's controller
+            }
             auto scanned_input_index = recomp::get_scanned_input_index();
             if (scanned_input_index == static_cast<int>(recomp::GameInput::TOGGLE_MENU) ||
                 scanned_input_index == static_cast<int>(recomp::GameInput::ACCEPT_MENU) ||
@@ -601,62 +685,14 @@ void recomp::poll_inputs() {
         std::lock_guard lock{ InputState.cur_controllers_mutex };
         InputState.cur_controllers.clear();
 
-        // GGA: one SDL controller per N64 port, in connection order (SDL instance ids grow with each connection).
+        // GGA: one SDL controller per N64 port (resolve_ports).
         // cur_controllers keeps ALL controllers: the menus and the binding scan still use the merged list.
-        std::vector<std::pair<SDL_JoystickID, SDL_GameController*>> sorted;
         for (const auto& [id, state] : InputState.controller_states) {
             if (state.controller != nullptr) {
                 InputState.cur_controllers.push_back(state.controller);
-                sorted.emplace_back(id, state.controller);
             }
         }
-        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (auto& port : InputState.port_controllers) {
-            port.clear();
-        }
-        if (!ports_loaded) {
-            load_ports();
-        }
-        // Assigned ports first: the controller chosen this session, else (reconnection, new session) the first free one with the
-        // saved GUID. An assigned port whose controller is absent stays empty (fixed port).
-        std::vector<bool> used(sorted.size(), false);
-        for (int p = 0; p < 4; p++) {
-            for (size_t i = 0; i < sorted.size() && port_instance[p] >= 0; i++) {
-                if (sorted[i].first == port_instance[p]) {
-                    InputState.port_controllers[p].push_back(sorted[i].second);
-                    used[i] = true;
-                }
-            }
-        }
-        for (int p = 0; p < 4; p++) {
-            if (!InputState.port_controllers[p].empty() || port_guid[p].empty()) {
-                continue;
-            }
-            if (port_link[p] >= 0) { // same controller as an earlier port, already resolved (absent: stays empty)
-                InputState.port_controllers[p] = InputState.port_controllers[port_link[p]];
-                port_instance[p] = port_instance[port_link[p]];
-                continue;
-            }
-            for (size_t i = 0; i < sorted.size(); i++) {
-                if (!used[i] && controller_guid(sorted[i].second) == port_guid[p]) {
-                    InputState.port_controllers[p].push_back(sorted[i].second);
-                    port_instance[p] = sorted[i].first;
-                    used[i] = true;
-                    break;
-                }
-            }
-        }
-        // Other controllers: unassigned ports in connection order (SDL instance ids grow with each connection).
-        int next = 0;
-        for (size_t i = 0; i < sorted.size(); i++) {
-            if (used[i]) {
-                continue;
-            }
-            while (next < 4 && (!InputState.port_controllers[next].empty() || !port_guid[next].empty())) {
-                next++;
-            }
-            InputState.port_controllers[next < 4 ? next : 0].push_back(sorted[i].second); // extra controllers share port 0
-        }
+        resolve_ports();
     }
 
     // Read the deltas while resetting them to zero.
@@ -701,7 +737,7 @@ extern "C" int gga_port_has_controller(int port) {
         return 0;
     }
     std::lock_guard lock{ InputState.cur_controllers_mutex };
-    return InputState.port_controllers[port].empty() ? 0 : 1;
+    return InputState.port_controllers[port].empty() && !port_kb[port] ? 0 : 1;
 }
 
 
@@ -865,7 +901,7 @@ bool recomp::get_input_digital(const std::span<const recomp::InputField> fields)
     return ret;
 }
 
-// GGA: controller reads for one N64 port only (controllers only, the keyboard stays with player 1).
+// GGA: controller reads for one N64 port only (controllers only, the keyboard's ports: gga_port_keyboard).
 namespace recomp {
 bool get_port_digital(std::span<const InputField> fields, int port);
 float get_port_analog(std::span<const InputField> fields, int port);

@@ -97,6 +97,8 @@ static int scanned_binding_index = -1;
 static int scanned_input_index = -1;
 static int focused_input_index = -1;
 static int focused_config_option_index = -1;
+static int last_config_option_index = -1;
+static bool eu_rom_installed_now = false; // GGA: European ROM copied during this session (restart note shown until restart)
 
 static bool msaa2x_supported = false;
 static bool msaa4x_supported = false;
@@ -107,19 +109,29 @@ static bool cont_active = true;
 
 static recomp::InputDevice cur_device = recomp::InputDevice::Controller;
 
-// GGA: controller assignment (src/game/input.cpp).
-void gga_assign_start();
-void gga_assign_stop();
-int gga_assign_port();
-std::string gga_port_label(int port);
+// GGA: Controls tab = the 4 players (device of each, src/game/input.cpp); a player's gear opens its own keys
+// (src/game/controls.cpp, one set per player). Device list taken when the tab opens and on Discard.
+std::vector<std::string> gga_devices_snapshot(std::array<int, 4>& choice);
+void gga_ports_apply(const std::array<int, 4>& choice);
+void gga_scan_device(int choice);
+void gga_set_bind_port(int port);
+void gga_keyboard_prepare(int port, bool shared); // src/game/config.cpp
+static std::vector<std::string> assign_devices;
+static std::array<int, 4> assign_choice{};
+static int assign_edit = -1; // player whose keys are shown, -1: the 4 players
 
-void gga_ports_refresh() {
+// Keyboard keys of a player whose list is on Keyboard: default ones if alone on it, own ones if 2+ players share it.
+static void keyboard_prepare(int port) {
+    if (assign_choice[port] == 1) {
+        gga_keyboard_prepare(port, std::count(assign_choice.begin(), assign_choice.end(), 1) >= 2);
+    }
+}
+
+static void controls_refresh() {
+    assign_devices = gga_devices_snapshot(assign_choice);
+    assign_edit = -1;
     if (controls_model_handle) {
-        controls_model_handle.DirtyVariable("assign_active");
-        controls_model_handle.DirtyVariable("assign_label");
-        for (int port = 0; port < 4; port++) {
-            controls_model_handle.DirtyVariable("port_label_" + std::to_string(port));
-        }
+        controls_model_handle.DirtyAllVariables();
     }
 }
 
@@ -164,6 +176,33 @@ void recomp::config_menu_set_cont_or_kb(bool cont_interacted) {
         if (graphics_model_handle) {
             graphics_model_handle.DirtyVariable("gfx_help__apply");
         }
+    }
+}
+
+bool gga_reset_available(); // src/game/ga_reset.cpp
+void gga_reset_request();
+bool gga_eu_rom_present(); // src/game/ga_lang_eu.cpp
+std::string gga_eu_rom_install(const std::filesystem::path& source);
+
+// GGA: Reset button of the menu: shown once the game is started, greyed out after a Controller Pak write (ui_state.cpp, each frame).
+void gga_reset_button_refresh() {
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("game_started");
+        general_model_handle.DirtyVariable("reset_available");
+    }
+    // Room kept right of the tabs for the round buttons (absolute, top right, ~78dp each): 2 at the launcher, 3 in game (Reset).
+    static int reserved_buttons = 0;
+    const int buttons = ultramodern::is_game_started() ? 3 : 2;
+    Rml::ElementDocument* document = recompui::get_config_context_id().get_document();
+    Rml::Element* tabset = document != nullptr ? document->GetElementById("config_tabset") : nullptr;
+    Rml::ElementList tabs_list;
+    if (tabset != nullptr) {
+        tabset->GetElementsByTagName(tabs_list, "tabs");
+    }
+    Rml::Element* tabs = tabs_list.empty() ? nullptr : tabs_list[0];
+    if (tabs != nullptr && buttons != reserved_buttons) {
+        reserved_buttons = buttons;
+        tabs->SetProperty("padding-right", std::to_string(buttons * 78 + 4) + "dp");
     }
 }
 
@@ -275,6 +314,7 @@ struct ControlOptionsContext {
     goemon64::ReplayCastles replay_castles;
     goemon64::Rt64DeveloperMode rt64_developer_mode;
     goemon64::SaveAnywhere save_anywhere; // shown in the Enhanced tab (enhanced_model), saved in general.json
+    goemon64::UseEuropeanVersion use_european_version; // General tab, read by the launcher (ui_launcher.cpp) and ga_lang_eu.cpp
 };
 
 Rml::DataModelHandle enhanced_model_handle;
@@ -412,6 +452,20 @@ void goemon64::set_save_anywhere(goemon64::SaveAnywhere mode) {
     if (enhanced_model_handle) {
         enhanced_model_handle.DirtyVariable("save_anywhere");
     }
+}
+
+goemon64::UseEuropeanVersion goemon64::get_use_european_version() {
+    return control_options_context.use_european_version;
+}
+
+void gga_launcher_logo_changed(); // ui_launcher.cpp
+
+void goemon64::set_use_european_version(goemon64::UseEuropeanVersion mode) {
+    control_options_context.use_european_version = mode;
+    if (general_model_handle) {
+        general_model_handle.DirtyVariable("use_european_version");
+    }
+    gga_launcher_logo_changed();
 }
 
 goemon64::Rt64DeveloperMode goemon64::get_rt64_developer_mode() {
@@ -570,6 +624,9 @@ class ConfigTabsetListener : public Rml::EventListener {
     void ProcessEvent(Rml::Event& event) override {
         if (event.GetId() == Rml::EventId::Tabchange) {
             int tab_index = event.GetParameter<int>("tab_index", 0);
+            if (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Controls)) {
+                controls_refresh(); // GGA: controllers may have been plugged in since
+            }
             bool in_mod_tab = (tab_index == recompui::config_tab_to_index(recompui::ConfigTab::Mods));
             if (in_mod_tab) {
                 recompui::set_config_tabset_mod_nav();
@@ -636,6 +693,33 @@ public:
                 close_config_menu();
             });
 
+        // GGA: "Use European Version": the player picks their European dump, copied as goemon2.eu.z64 (ga_lang_eu.cpp).
+        recompui::register_event(listener, "select_eu_rom",
+            [](const std::string& param, Rml::Event& event) {
+                goemon64::open_file_dialog([](bool success, const std::filesystem::path& path) {
+                    if (!success) {
+                        return;
+                    }
+                    const std::string error = gga_eu_rom_install(path);
+                    if (!error.empty()) {
+                        recompui::message_box(error.c_str());
+                    } else {
+                        eu_rom_installed_now = true;
+                    }
+                    general_model_handle.DirtyVariable("eu_rom_present");
+                    general_model_handle.DirtyVariable("eu_rom_installed_now");
+                });
+            });
+
+        // GGA: Reset button (src/game/ga_reset.cpp): menu closed, then fade to black and back to the boot logos.
+        recompui::register_event(listener, "reset_game",
+            [](const std::string& param, Rml::Event& event) {
+                if (gga_reset_available()) {
+                    close_config_menu();
+                    gga_reset_request();
+                }
+            });
+
         recompui::register_event(listener, "open_quit_game_prompt",
             [](const std::string& param, Rml::Event& event) {
                 goemon64::open_quit_game_prompt();
@@ -691,10 +775,16 @@ public:
                     return;
                 }
                 focused_config_option_index = option_index;
+                if (option_index != -1) {
+                    last_config_option_index = option_index;
+                    model_handle.DirtyVariable("last_config_index");
+                }
                 model_handle.DirtyVariable("cur_config_index");
             });
 
         constructor.Bind("cur_config_index", &focused_config_option_index);
+        // GGA: last option shown, so a description with a button (Use European Version) stays while the cursor goes to it
+        constructor.Bind("last_config_index", &last_config_option_index);
     }
 
     void make_graphics_bindings(Rml::Context* context) {
@@ -844,25 +934,44 @@ public:
                 model_handle.DirtyVariable("active_binding_slot");
             });
 
-        // GGA: which controller plays which player (src/game/input.cpp, refreshed every frame by gga_ports_refresh).
-        constructor.BindFunc("assign_active", [](Rml::Variant& out) { out = gga_assign_port() >= 0; });
-        constructor.BindFunc("assign_label", [](Rml::Variant& out) {
-            int port = gga_assign_port();
-            out = port < 0 ? std::string{"Assign controllers"}
-                           : "Player " + std::to_string(port + 1) + ": press a button (Esc / Back: finish)";
-        });
+        // GGA: the 4 players (which device plays which player, src/game/input.cpp) and each player's keys.
+        constructor.RegisterArray<std::vector<std::string>>(); // also used by the debug model (created after this one)
+        constructor.Bind("assign_devices", &assign_devices);
+        constructor.Bind("assign_edit", &assign_edit);
         for (int port = 0; port < 4; port++) {
-            constructor.BindFunc("port_label_" + std::to_string(port), [port](Rml::Variant& out) {
-                out = "P" + std::to_string(port + 1) + ": " + gga_port_label(port);
-            });
+            constructor.Bind("assign_choice_" + std::to_string(port), &assign_choice[port]);
         }
-        constructor.BindEventCallback("toggle_controller_assign",
+        constructor.BindEventCallback("apply_controller_assign",
             [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
-                if (gga_assign_port() >= 0) {
-                    gga_assign_stop();
-                } else {
-                    gga_assign_start();
+                gga_ports_apply(assign_choice);
+                for (int port = 0; port < 4; port++) {
+                    keyboard_prepare(port);
                 }
+            });
+        constructor.BindEventCallback("discard_controller_assign", // back to the devices really in use
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                controls_refresh();
+            });
+        // Gear of a player (disabled on None): its keys, on the device chosen in its list.
+        constructor.BindEventCallback("open_player_bindings",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                const int port = inputs.at(0).Get<int>();
+                if (port < 0 || port >= 4 || assign_choice[port] == 0) {
+                    return;
+                }
+                recomp::cancel_scanning_input();
+                keyboard_prepare(port);
+                gga_set_bind_port(port);
+                gga_scan_device(assign_choice[port]);
+                cur_device = assign_choice[port] == 1 ? recomp::InputDevice::Keyboard : recomp::InputDevice::Controller;
+                assign_edit = port;
+                model_handle.DirtyAllVariables();
+            });
+        constructor.BindEventCallback("close_player_bindings",
+            [](Rml::DataModelHandle model_handle, Rml::Event& event, const Rml::VariantList& inputs) {
+                recomp::cancel_scanning_input();
+                assign_edit = -1;
+                model_handle.DirtyVariable("assign_edit");
             });
 
         constructor.BindEventCallback("reset_input_bindings_to_defaults",
@@ -871,6 +980,9 @@ public:
                     goemon64::reset_cont_input_bindings();
                 } else {
                     goemon64::reset_kb_input_bindings();
+                    if (assign_edit >= 0) {
+                        keyboard_prepare(assign_edit); // keyboard shared by 2+ players: reset = no keys, not the default ones
+                    }
                 }
                 model_handle.DirtyAllVariables();
                 nav_help_model_handle.DirtyVariable("nav_help__accept");
@@ -1062,6 +1174,25 @@ public:
         bind_option(constructor, "analog_cam_mode", &control_options_context.analog_cam_mode);
         bind_option(constructor, "analog_camera_invert_mode", &control_options_context.analog_camera_invert_mode);
         bind_option(constructor, "rt64_developer_mode", &control_options_context.rt64_developer_mode);
+        // Reset button (config_menu.rml, data-model general_model on the icon buttons)
+        constructor.BindFunc("game_started", [](Rml::Variant& out) { out = ultramodern::is_game_started(); });
+        constructor.BindFunc("reset_available", [](Rml::Variant& out) { out = gga_reset_available(); });
+
+        // not bind_option: the setter must run so the launcher swaps its logo
+        constructor.BindFunc("eu_rom_present", [](Rml::Variant& out) { out = gga_eu_rom_present(); });
+        constructor.Bind("eu_rom_installed_now", &eu_rom_installed_now);
+        constructor.BindFunc("use_european_version",
+            [](Rml::Variant& out) { get_option(control_options_context.use_european_version, out); },
+            [](const Rml::Variant& in) {
+                goemon64::UseEuropeanVersion mode = goemon64::UseEuropeanVersion::Off;
+                set_option(mode, in);
+                if (mode == goemon64::UseEuropeanVersion::On && !gga_eu_rom_present()) {
+                    general_model_handle.DirtyVariable("use_european_version"); // On refused without the ROM (greyed out)
+                    return;
+                }
+                goemon64::set_use_european_version(mode);
+            }
+        );
 
         general_model_handle = constructor.GetModelHandle();
     }
@@ -1106,9 +1237,8 @@ public:
         // Bind the debug mode enabled flag.
         constructor.Bind("debug_enabled", &debug_context.debug_enabled);
         
-        // Register the array type for string vectors.
-        constructor.RegisterArray<std::vector<std::string>>();
-        
+        // Array type for string vectors: registered by the controls model (same context, created first).
+
         // Bind the warp parameter indices
         constructor.Bind("area_index", &debug_context.area_index);
         constructor.Bind("scene_index", &debug_context.scene_index);
@@ -1173,6 +1303,9 @@ void recompui::toggle_fullscreen() {
 }
 
 void recompui::set_config_tab(ConfigTab tab) {
+    if (tab == ConfigTab::Controls) {
+        controls_refresh(); // GGA: also when the tab is already the active one (no Tabchange event then)
+    }
     get_config_tabset()->SetActiveTab(config_tab_to_index(tab));
 }
 

@@ -94,6 +94,7 @@ namespace recompui {
         void set_drag(Drag drag);
         void set_tab_index(TabIndex focus);
         void set_font_family(std::string_view family);
+        void set_animation(std::string_view animation); // GGA: CSS "animation" value, keyframes from recomp.rcss
         virtual void set_nav_auto(NavDirection dir);
         virtual void set_nav_none(NavDirection dir);
         virtual void set_nav(NavDirection dir, Element* element);

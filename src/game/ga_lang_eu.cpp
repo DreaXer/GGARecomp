@@ -14,9 +14,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <string>
 #include <vector>
 
 #include "goemon_config.h"
@@ -111,6 +113,11 @@ void convert_dialogue(std::vector<uint8_t>& f) {
 }
 
 void load_eu_rom() {
+    // option "Use European Version" (General tab), read once at boot: Off = US game, as without the EU ROM
+    if (goemon64::get_use_european_version() != goemon64::UseEuropeanVersion::On) {
+        fprintf(stderr, "[GGA LANG] Use European Version is Off, %s not read\n", EU_ROM_NAME);
+        return;
+    }
     std::ifstream in(goemon64::get_app_folder_path() / EU_ROM_NAME, std::ios::binary);
     if (!in) {
         return;
@@ -270,7 +277,57 @@ void install_font() {
     }
 }
 
+// The 16 MB European ROM in z64 (big-endian) order: v64 (16-bit swapped) and n64 (32-bit swapped) dumps are put back in order.
+// Returns false if it is not the European ROM (size, header code NGMP).
+bool eu_rom_to_z64(std::vector<uint8_t>& rom) {
+    if (rom.size() != 0x1000000) {
+        return false;
+    }
+    if (rom[0] == 0x37 && rom[1] == 0x80) {
+        for (size_t i = 0; i < rom.size(); i += 2) {
+            std::swap(rom[i], rom[i + 1]);
+        }
+    } else if (rom[0] == 0x40 && rom[1] == 0x12) {
+        for (size_t i = 0; i < rom.size(); i += 4) {
+            std::swap(rom[i], rom[i + 3]);
+            std::swap(rom[i + 1], rom[i + 2]);
+        }
+    }
+    return rom[0] == 0x80 && rom[1] == 0x37 && std::memcmp(rom.data() + 0x3B, "NGMP", 4) == 0;
+}
+
 } // namespace
+
+// "Use European Version" option (ui_config.cpp): is goemon2.eu.z64 in the application folder and the European ROM?
+bool gga_eu_rom_present() {
+    std::ifstream in(goemon64::get_app_folder_path() / EU_ROM_NAME, std::ios::binary | std::ios::ate);
+    if (!in || in.tellg() != std::streamoff(0x1000000)) {
+        return false;
+    }
+    char head[0x40] = {};
+    in.seekg(0);
+    in.read(head, sizeof(head));
+    return std::memcmp(head + 0x3B, "NGMP", 4) == 0;
+}
+
+// Copies the player's European dump (any byte order) to the application folder as goemon2.eu.z64. Empty string = done,
+// else the reason it was refused (shown to the player).
+std::string gga_eu_rom_install(const std::filesystem::path& source) {
+    std::ifstream in(source, std::ios::binary);
+    if (!in) {
+        return "Failed to open the file.";
+    }
+    std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (!eu_rom_to_z64(rom)) {
+        return "This is not the European ROM of the game (Mystical Ninja 2 Starring Goemon, NGMP).";
+    }
+    const std::filesystem::path dest = goemon64::get_app_folder_path() / EU_ROM_NAME;
+    std::ofstream out(dest, std::ios::binary | std::ios::trunc);
+    if (!out.write(reinterpret_cast<const char*>(rom.data()), std::streamsize(rom.size()))) {
+        return "Failed to copy the ROM to " + dest.string() + ".";
+    }
+    return {};
+}
 
 // Hook at the entry of file_load (through ga_file_load_begin): the first call (boot) reads the EU ROM.
 extern "C" void ga_lang_load_begin(uint8_t* rdram, uint32_t idx) {

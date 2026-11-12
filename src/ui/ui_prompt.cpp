@@ -159,55 +159,28 @@ void recompui::init_prompt_context() {
     context.close();
 }
 
+// GGA (2026-11-12): prompt buttons (Quit / Cancel, Apply / Discard...) in the frames of the launcher menu and the Settings
+// tabs: plain purple #4A10AD, border #A487D6, white text; under the cursor (hover / focus): #6B31C6, white border and the text
+// blink of the game's menus (@keyframes gga-menu-blink, recomp.rcss). Same look for every variant.
 void style_button(recompui::Button* button, recompui::ButtonVariant variant) {
-    recompui::Color button_color{};
+    (void)variant;
+    const recompui::Color white{ 255, 255, 255, 255 };
+    button->set_color(white);
+    button->set_background_color({ 0x4A, 0x10, 0xAD, 255 });
+    button->set_border_color({ 0xA4, 0x87, 0xD6, 255 });
+    button->set_border_width(4.0f, recompui::Unit::Dp);
+    button->set_border_radius(4.0f, recompui::Unit::Dp);
+    button->set_animation("none"); // base value: the blink of the hover / focus styles stops when they are removed
 
-    switch (variant) {
-        case recompui::ButtonVariant::Primary:
-            button_color = { 185, 125, 242, 255 };
-            break;
-        case recompui::ButtonVariant::Secondary:
-            button_color = { 23, 214, 232, 255 };
-            break;
-        case recompui::ButtonVariant::Tertiary:
-            button_color = { 242, 242, 242, 255 };
-            break;
-        case recompui::ButtonVariant::Success:
-            button_color = { 69, 208, 67, 255 };
-            break;
-        case recompui::ButtonVariant::Error:
-            button_color = { 248, 96, 57, 255 };
-            break;
-        case recompui::ButtonVariant::Warning:
-            button_color = { 233, 205, 53, 255 };
-            break;
-        default:
-            assert(false);
-            break;
+    for (recompui::Style* style : { button->get_hover_style(), button->get_focus_style() }) {
+        style->set_color(white);
+        style->set_background_color({ 0x6B, 0x31, 0xC6, 255 });
+        style->set_border_color(white);
+        style->set_animation("0.24s linear-in-out infinite gga-menu-blink");
     }
 
-    recompui::Color border_color = button_color;
-    recompui::Color background_color = button_color;
-    border_color.a = 0.8f * 255;
-    background_color.a = 0.05f * 255;
-    button->set_border_color(border_color);
-    button->set_background_color(background_color);
-    
-    recompui::Color hover_border_color = button_color;
-    recompui::Color hover_background_color = button_color;
-    hover_border_color.a = 255;
-    hover_background_color.a = 0.3f * 255;
-    recompui::Style* hover_style = button->get_hover_style();
-    hover_style->set_border_color(hover_border_color);
-    hover_style->set_background_color(hover_background_color);
-    
-    recompui::Style* focus_style = button->get_focus_style();
-    focus_style->set_border_color(hover_border_color);
-    focus_style->set_background_color(hover_background_color);
-
     recompui::Color disabled_color { 255, 255, 255, static_cast<uint8_t>(0.6f * 255) };
-    recompui::Style* disabled_style = button->get_disabled_style();
-    disabled_style->set_color(disabled_color);
+    button->get_disabled_style()->set_color(disabled_color);
 }
 
 // Must be called while prompt_state.mutex is locked.

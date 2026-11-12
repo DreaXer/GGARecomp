@@ -440,6 +440,15 @@ namespace recompui {
         }
     }
 
+    void Style::set_animation(std::string_view animation) {
+        Rml::PropertyDictionary properties;
+        if (Rml::StyleSheetSpecification::ParsePropertyDeclaration(properties, "animation", Rml::String(animation))) {
+            for (const auto& [id, property] : properties.GetProperties()) {
+                set_property(id, property);
+            }
+        }
+    }
+
     void Style::set_opacity(float opacity) {
         set_property(Rml::PropertyId::Opacity, Rml::Property(opacity, Rml::Unit::NUMBER));
     }

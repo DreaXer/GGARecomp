@@ -2,46 +2,23 @@
 	<head>
 	</head>
 	<body>
-		<form class="config__form" data-attr-cur-input="cur_input_row" data-attr-cur-binding-slot="active_binding_slot">
-			<div class="config__header">
-				<div class="config__header-left">
-					<button
-                        class="toggle"
-                        id="cont_kb_toggle"
-                        data-class-toggle--checked="input_device_is_keyboard"
-                        onclick="toggle_input_device"
-                        style="nav-down: #input_row_button_0_0; nav-up: #tab_controls"
-                    >
-						<div class="toggle__border" />
-						<div class="toggle__floater" />
-						<div class="toggle__icons">
-							<div class="toggle__icon toggle__icon--left">
-								<div>␼</div>
-							</div>
-							<div class="toggle__icon toggle__icon--right">
-								<div>␽</div>
-							</div>
-						</div>
-					</button>
-				</div>
-				<!-- GGA: controller of each player (src/game/input.cpp). Players press a button in turn, P1 first. -->
-				<div style="display: flex; flex-direction: row; align-items: center;">
+		<form class="config__form" style="position: relative;" data-attr-cur-input="cur_input_row" data-attr-cur-binding-slot="active_binding_slot">
+			<!-- GGA: keys of one player (assign_edit), opened by its gear in the players page below. Device = the player's list. -->
+			<div class="config__header" data-if="assign_edit >= 0">
+				<!-- left / right parts of equal width (flex 1 1 0): the framed title stays in the middle of the header -->
+				<div class="config__header-left" style="flex: 1 1 0;">
 					<button
                         class="button"
-                        style="nav-down:#input_row_button_0_0"
-                        data-class-button--warning="assign_active"
-                        data-event-click="toggle_controller_assign"
+                        id="bindings_back"
+                        style="nav-down: #input_row_button_0_0; nav-up: #tab_controls"
+                        data-event-click="close_player_bindings"
                     >
-						<div class="button__label">{{assign_label}}</div>
+						<div class="button__label">Back</div>
 					</button>
-					<div style="display: flex; flex-direction: column; margin-left: 16dp; font-size: 16dp;">
-						<div>{{port_label_0}}</div>
-						<div>{{port_label_1}}</div>
-						<div>{{port_label_2}}</div>
-						<div>{{port_label_3}}</div>
-					</div>
 				</div>
-				<div>
+				<!-- same padding / text style (label-md, like .button) as the buttons next to it: same height -->
+				<div class="label-md" style="flex: 0 0 auto; margin: 0 24dp; padding: 23dp 48dp; border-width: 1.1dp; border-color: rgba(255, 255, 255, 0.5); border-radius: 12dp; background-color: rgba(255, 255, 255, 0.05);">Player {{assign_edit + 1}}</div>
+				<div style="flex: 1 1 0; display: flex; flex-direction: row; justify-content: flex-end;">
 					<button
                         class="button button--warning"
                         style="nav-down:#input_row_button_0_0"
@@ -51,7 +28,7 @@
 					</button>
 				</div>
 			</div>
-			<div class="config__wrapper input-config">
+			<div class="config__wrapper input-config" data-if="assign_edit >= 0">
 				<div class="input-config__horizontal-split">
 					<!-- Left Side: Mappings List -->
 					<div class="input-config__mappings" data-event-mouseout="set_input_row_focus(-1)">
@@ -63,7 +40,7 @@
                                     data-for="input_bindings, i : inputs.array"
                                     data-event-mouseover="set_input_row_focus(i)"
                                     data-class-control-option--active="get_input_enum_name(i)==cur_input_row"
-                                    data-if="!input_device_is_keyboard || (get_input_enum_name(i) != 'TOGGLE_MENU' && get_input_enum_name(i) != 'ACCEPT_MENU' && get_input_enum_name(i) != 'APPLY_MENU')"
+                                    data-if="(assign_edit == 0 && !input_device_is_keyboard) || (get_input_enum_name(i) != 'TOGGLE_MENU' && get_input_enum_name(i) != 'ACCEPT_MENU' && get_input_enum_name(i) != 'APPLY_MENU')"
                                 >
 									<label
                                         class="control-option__label"
@@ -77,7 +54,7 @@
                                             data-event-click="set_input_binding(i,j)"
                                             class="prompt-font control-option__binding"
                                             data-attr-bind-slot="j"
-                                            data-attr-style="i == 0 ? 'nav-up:#cont_kb_toggle' : 'nav-up:auto'"
+                                            data-attr-style="i == 0 ? 'nav-up:#bindings_back' : 'nav-up:auto'"
                                         >
 											<div class="control-option__binding-recording">
 												<div class="control-option__binding-circle" />
@@ -94,7 +71,7 @@
                                         data-event-focus="set_input_row_focus(i)"
                                         data-event-click="clear_input_bindings(i)"
                                         class="icon-button icon-button--error"
-                                        data-attr-style="i == 0 ? 'nav-up:#cont_kb_toggle' : 'nav-up:auto'"
+                                        data-attr-style="i == 0 ? 'nav-up:#bindings_back' : 'nav-up:auto'"
                                     >
 										<svg src="icons/Trash.svg" />
 									</button>
@@ -104,7 +81,7 @@
                                         data-event-focus="set_input_row_focus(i)"
                                         data-event-click="reset_single_input_binding_to_default(i)"
                                         class="icon-button icon-button--error"
-                                        data-attr-style="i == 0 ? 'nav-up:#cont_kb_toggle' : 'nav-up:auto'"
+                                        data-attr-style="i == 0 ? 'nav-up:#bindings_back' : 'nav-up:auto'"
                                     >
 										<svg src="icons/Reset.svg" />
 									</button>
@@ -129,6 +106,87 @@
 					</div>
 
 				</div>
+			</div>
+			<!-- GGA: players page (src/game/input.cpp), shown first. Square = icon of the chosen device; Apply saves, Discard
+			     goes back to the devices in use; gear = that player's keys (above). -->
+			<!-- data-if hides by setting display: none, which an inline display would defeat: no display on this element. -->
+			<div data-if="assign_edit == -1" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 100; background-color: #120D0B; border-bottom-right-radius: 16dp; border-bottom-left-radius: 16dp;">
+			<div style="display: flex; flex-direction: column; width: 100%; height: 100%; padding: 24dp; box-sizing: border-box;">
+				<div style="position: absolute; top: 24dp; right: 24dp; z-index: 1; display: flex; flex-direction: row;"><!-- out of the flow: leaves the height to the players -->
+					<button class="button button--error" style="margin-right: 16dp;" data-event-click="discard_controller_assign">
+						<div class="button__label">Discard</div>
+					</button>
+					<button class="button button--success" id="assign_apply" data-event-click="apply_controller_assign">
+						<div class="button__label">Apply</div>
+					</button>
+				</div>
+				<div style="flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+				<div style="display: flex; flex-direction: row; justify-content: center;">
+					<div style="display: flex; flex-direction: column; align-items: center; width: 320dp; margin: 0 48dp;">
+						<div style="font-size: 28dp; margin-bottom: 16dp;">Player 1</div>
+						<div style="width: 210dp; height: 210dp; border-width: 3dp; border-color: #FF0000; border-radius: 28dp; background-color: rgba(255, 0, 0, 0.12); display: flex; align-items: center; justify-content: center; font-family: promptfont; font-size: 128dp;">
+							<div data-if="assign_choice_0 == 1">␽</div>
+							<div data-if="assign_choice_0 > 1">␼</div>
+						</div>
+						<div style="position: relative; width: 100%; margin-top: 16dp;">
+							<div class="config-debug__select-wrapper" style="flex: 0 0 auto; width: 100%;">
+								<select data-value="assign_choice_0" style="text-align: center; padding-left: 0; padding-right: 0; font-weight: 700;">
+									<option data-for="dev, i : assign_devices" data-attr-value="i">{{dev}}</option>
+								</select>
+							</div>
+							<button class="icon-button" style="position: absolute; top: 4dp; right: -60dp; width: 48dp; min-width: 48dp; max-width: 48dp; height: 48dp; min-height: 48dp; max-height: 48dp; border-width: 1.1dp; border-color: rgba(255, 255, 255, 0.5); border-radius: 12dp; background-color: rgba(255, 255, 255, 0.05); font-family: promptfont; font-size: 32dp;" data-style-opacity="assign_choice_0 == 0 ? 0.3 : 1" data-event-click="open_player_bindings(0)"><div>⚙</div></button>
+						</div>
+					</div>
+					<div style="display: flex; flex-direction: column; align-items: center; width: 320dp; margin: 0 48dp;">
+						<div style="font-size: 28dp; margin-bottom: 16dp;">Player 2</div>
+						<div style="width: 210dp; height: 210dp; border-width: 3dp; border-color: #00ADFF; border-radius: 28dp; background-color: rgba(0, 173, 255, 0.12); display: flex; align-items: center; justify-content: center; font-family: promptfont; font-size: 128dp;">
+							<div data-if="assign_choice_1 == 1">␽</div>
+							<div data-if="assign_choice_1 > 1">␼</div>
+						</div>
+						<div style="position: relative; width: 100%; margin-top: 16dp;">
+							<div class="config-debug__select-wrapper" style="flex: 0 0 auto; width: 100%;">
+								<select data-value="assign_choice_1" style="text-align: center; padding-left: 0; padding-right: 0; font-weight: 700;">
+									<option data-for="dev, i : assign_devices" data-attr-value="i">{{dev}}</option>
+								</select>
+							</div>
+							<button class="icon-button" style="position: absolute; top: 4dp; right: -60dp; width: 48dp; min-width: 48dp; max-width: 48dp; height: 48dp; min-height: 48dp; max-height: 48dp; border-width: 1.1dp; border-color: rgba(255, 255, 255, 0.5); border-radius: 12dp; background-color: rgba(255, 255, 255, 0.05); font-family: promptfont; font-size: 32dp;" data-style-opacity="assign_choice_1 == 0 ? 0.3 : 1" data-event-click="open_player_bindings(1)"><div>⚙</div></button>
+						</div>
+					</div>
+				</div>
+				<div style="display: flex; flex-direction: row; justify-content: center; margin-top: 64dp;">
+					<div style="display: flex; flex-direction: column; align-items: center; width: 320dp; margin: 0 48dp;">
+						<div style="font-size: 28dp; margin-bottom: 16dp;">Player 3</div>
+						<div style="width: 210dp; height: 210dp; border-width: 3dp; border-color: #00FF00; border-radius: 28dp; background-color: rgba(0, 255, 0, 0.12); display: flex; align-items: center; justify-content: center; font-family: promptfont; font-size: 128dp;">
+							<div data-if="assign_choice_2 == 1">␽</div>
+							<div data-if="assign_choice_2 > 1">␼</div>
+						</div>
+						<div style="position: relative; width: 100%; margin-top: 16dp;">
+							<div class="config-debug__select-wrapper" style="flex: 0 0 auto; width: 100%;">
+								<select data-value="assign_choice_2" style="text-align: center; padding-left: 0; padding-right: 0; font-weight: 700;">
+									<option data-for="dev, i : assign_devices" data-attr-value="i">{{dev}}</option>
+								</select>
+							</div>
+							<button class="icon-button" style="position: absolute; top: 4dp; right: -60dp; width: 48dp; min-width: 48dp; max-width: 48dp; height: 48dp; min-height: 48dp; max-height: 48dp; border-width: 1.1dp; border-color: rgba(255, 255, 255, 0.5); border-radius: 12dp; background-color: rgba(255, 255, 255, 0.05); font-family: promptfont; font-size: 32dp;" data-style-opacity="assign_choice_2 == 0 ? 0.3 : 1" data-event-click="open_player_bindings(2)"><div>⚙</div></button>
+						</div>
+					</div>
+					<div style="display: flex; flex-direction: column; align-items: center; width: 320dp; margin: 0 48dp;">
+						<div style="font-size: 28dp; margin-bottom: 16dp;">Player 4</div>
+						<div style="width: 210dp; height: 210dp; border-width: 3dp; border-color: #FF00FF; border-radius: 28dp; background-color: rgba(255, 0, 255, 0.12); display: flex; align-items: center; justify-content: center; font-family: promptfont; font-size: 128dp;">
+							<div data-if="assign_choice_3 == 1">␽</div>
+							<div data-if="assign_choice_3 > 1">␼</div>
+						</div>
+						<div style="position: relative; width: 100%; margin-top: 16dp;">
+							<div class="config-debug__select-wrapper" style="flex: 0 0 auto; width: 100%;">
+								<select data-value="assign_choice_3" style="text-align: center; padding-left: 0; padding-right: 0; font-weight: 700;">
+									<option data-for="dev, i : assign_devices" data-attr-value="i">{{dev}}</option>
+								</select>
+							</div>
+							<button class="icon-button" style="position: absolute; top: 4dp; right: -60dp; width: 48dp; min-width: 48dp; max-width: 48dp; height: 48dp; min-height: 48dp; max-height: 48dp; border-width: 1.1dp; border-color: rgba(255, 255, 255, 0.5); border-radius: 12dp; background-color: rgba(255, 255, 255, 0.05); font-family: promptfont; font-size: 32dp;" data-style-opacity="assign_choice_3 == 0 ? 0.3 : 1" data-event-click="open_player_bindings(3)"><div>⚙</div></button>
+						</div>
+					</div>
+				</div>
+				</div>
+			</div>
 			</div>
 		</form>
 	</body>

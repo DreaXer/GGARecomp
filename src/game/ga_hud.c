@@ -1050,6 +1050,19 @@ void ga_menu_gray(uint8_t* rdram, recomp_context* ctx) {
 static int swim_skipped_pass; /* ports skipped by the running func_800DBCAC loop */
 static int swim_skipped;      /* ports skipped in the last zone created */
 static int swim_rescue;       /* next zone creation skips nobody */
+
+/* Reset button (ga_reset.cpp): our per-game state back to its launch values. */
+void ga_hud_reset_state(void) {
+    int p;
+    for (p = 0; p < 4; p++) {
+        st_choosing[p] = 0;
+        st_char[p] = 0;
+    }
+    st_owner = 0;
+    resume_place = -1;
+    map_hdr_state = map_hdr_text = 0;
+    swim_skipped_pass = swim_skipped = swim_rescue = 0;
+}
 int ga_swim_skip(uint8_t* rdram, recomp_context* ctx) {
     const int8_t c = (int8_t)ctx->r4;
     if (swim_rescue || (MEM_W(0xC0, ctx->r29) & 0x10000) == 0 || c == 2 || c == 3) {
